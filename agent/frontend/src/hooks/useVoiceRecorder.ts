@@ -153,7 +153,9 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
 
   /** Transcribe wake word capture. If wake word found, go attentive. */
   const transcribeWakeCheck = useCallback(async (blob: Blob) => {
+    console.debug(`[voice] transcribeWakeCheck: blob.size=${blob.size}`)
     if (blob.size === 0) {
+      console.debug(`[voice] empty blob — going passive`)
       if (continuousRef.current) goPassive()
       return
     }
@@ -163,10 +165,12 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
       ? Date.now() - captureStartRef.current
       : 0
     if (captureDuration > 0 && captureDuration < 500) {
+      console.debug(`[voice] too short (${captureDuration}ms) — going passive`)
       goPassive()
       return
     }
 
+    console.debug(`[voice] sending to transcribe (${captureDuration}ms, ${blob.size} bytes)`)
     setTranscribing(true)
     try {
       const form = new FormData()
@@ -334,10 +338,19 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
               speechPeakRef.current * SILENCE_DROP_RATIO,
               ambientLevelRef.current * 1.3,
             )
+
+            // Debug: log capturing state periodically
+            if (Math.random() < 0.05) {
+              const elapsed = captureStartRef.current ? Date.now() - captureStartRef.current : 0
+              const silenceMs = silenceStartRef.current ? Date.now() - silenceStartRef.current : 0
+              console.debug(`[voice] capturing: rms=${rms.toFixed(3)} peak=${speechPeakRef.current.toFixed(3)} silenceThresh=${silenceThreshold.toFixed(3)} silenceMs=${silenceMs} elapsed=${elapsed}`)
+            }
+
             if (rms < silenceThreshold) {
               if (silenceStartRef.current === 0) {
                 silenceStartRef.current = Date.now()
               } else if (Date.now() - silenceStartRef.current > SILENCE_DURATION) {
+                console.debug(`[voice] capture complete — stopping recorder`)
                 stateRef.current = 'processing'
                 if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
                   mediaRecorderRef.current.stop()
