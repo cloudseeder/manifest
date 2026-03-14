@@ -1254,6 +1254,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
             if wake:
                 prompt = f"{wake},"
         text = tx.transcribe(tmp_path, language=_voice_cfg.language, initial_prompt=prompt)
+        log.info("STT result: %r (prompt=%r, noise_suppress=%s)", text, prompt, _voice_cfg.noise_suppress)
         return {"text": text}
     finally:
         os.unlink(tmp_path)
