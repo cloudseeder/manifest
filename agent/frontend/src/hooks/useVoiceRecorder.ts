@@ -2,7 +2,7 @@ import { useRef, useState, useCallback } from 'react'
 
 // --- Continuous listening thresholds ---
 const SPEECH_THRESHOLD = 0.08    // RMS level to detect speech onset
-const ONSET_FRAMES = 25          // ~425ms of sustained signal before capture starts
+const ONSET_FRAMES = 8           // ~136ms of sustained signal before capture starts
 const SILENCE_DURATION = 800     // ms of silence before auto-stop (wake word capture only)
 const SILENCE_DROP_RATIO = 0.3   // silence = RMS drops to 30% of peak speech level
 const AMBIENT_EMA_ALPHA = 0.01   // slow EMA for tracking ambient noise floor
