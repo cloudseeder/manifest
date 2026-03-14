@@ -3,9 +3,6 @@ import { useRef, useState, useCallback } from 'react'
 // --- Continuous listening thresholds ---
 const SPEECH_THRESHOLD = 0.08    // RMS level to detect speech onset
 const ONSET_FRAMES = 25          // ~425ms of sustained signal before capture starts
-const SPEECH_FREQ_LOW = 300      // Hz — lower bound of speech band for VAD
-const SPEECH_FREQ_HIGH = 3000    // Hz — upper bound of speech band for VAD
-const SPEECH_RATIO_MIN = 0.4     // minimum speech-band energy ratio to trigger capture
 const SILENCE_DURATION = 1500    // ms of silence before auto-stop (wake word capture only)
 const SILENCE_DROP_RATIO = 0.3   // silence = RMS drops to 30% of peak speech level
 const AMBIENT_EMA_ALPHA = 0.01   // slow EMA for tracking ambient noise floor
@@ -153,9 +150,7 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
 
   /** Transcribe wake word capture. If wake word found, go attentive. */
   const transcribeWakeCheck = useCallback(async (blob: Blob) => {
-    console.debug(`[voice] transcribeWakeCheck: blob.size=${blob.size}`)
     if (blob.size === 0) {
-      console.debug(`[voice] empty blob — going passive`)
       if (continuousRef.current) goPassive()
       return
     }
@@ -165,12 +160,10 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
       ? Date.now() - captureStartRef.current
       : 0
     if (captureDuration > 0 && captureDuration < 500) {
-      console.debug(`[voice] too short (${captureDuration}ms) — going passive`)
       goPassive()
       return
     }
 
-    console.debug(`[voice] sending to transcribe (${captureDuration}ms, ${blob.size} bytes)`)
     setTranscribing(true)
     try {
       const form = new FormData()
@@ -259,13 +252,6 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
       audioCtxRef.current = audioCtx
       analyserRef.current = analyser
 
-      // Compute which frequency bins correspond to speech (300Hz–3kHz).
-      // VAD only looks at these bins, rejecting TV bass/music/effects
-      // without reducing RMS amplitude via hardware filters.
-      const binHz = audioCtx.sampleRate / analyser.fftSize
-      const speechBinLow = Math.max(1, Math.floor(SPEECH_FREQ_LOW / binHz))
-      const speechBinHigh = Math.min(analyser.frequencyBinCount - 1, Math.ceil(SPEECH_FREQ_HIGH / binHz))
-
       const dataArray = new Uint8Array(analyser.frequencyBinCount)
 
       if (continuous) {
@@ -279,19 +265,12 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
         function updateLevelContinuous() {
           if (!analyserRef.current) return
           analyserRef.current.getByteFrequencyData(dataArray)
-
-          // Full-spectrum RMS for reliable level detection
-          let totalSum = 0
-          let speechSum = 0
+          let sum = 0
           for (let i = 0; i < dataArray.length; i++) {
             const v = dataArray[i] / 255
-            const vv = v * v
-            totalSum += vv
-            if (i >= speechBinLow && i <= speechBinHigh) speechSum += vv
+            sum += v * v
           }
-          const rms = Math.min(1, Math.sqrt(totalSum / dataArray.length) * 2.5)
-          // Speech-band energy ratio: high for voice, low for TV/music
-          const speechRatio = totalSum > 0 ? speechSum / totalSum : 0
+          const rms = Math.min(1, Math.sqrt(sum / dataArray.length) * 2.5)
           audioLevelRef.current = rms
 
           const state = stateRef.current
@@ -302,17 +281,11 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
               ? rms
               : ambientLevelRef.current * (1 - AMBIENT_EMA_ALPHA) + rms * AMBIENT_EMA_ALPHA
 
-            // Debug: log every ~2s so we can see actual values
-            if (Math.random() < 0.03) {
-              const onsetDbg = Math.min(0.35, Math.max(SPEECH_THRESHOLD, ambientLevelRef.current * 1.5))
-              console.debug(`[voice] passive: rms=${rms.toFixed(3)} ambient=${ambientLevelRef.current.toFixed(3)} threshold=${onsetDbg.toFixed(3)} speechRatio=${speechRatio.toFixed(3)} frames=${speechFramesRef.current}`)
-            }
-
-            const onsetThreshold = Math.min(0.35, Math.max(SPEECH_THRESHOLD, ambientLevelRef.current * 1.5))
-            if (rms > onsetThreshold && speechRatio >= SPEECH_RATIO_MIN) {
+            const onsetThreshold = Math.max(SPEECH_THRESHOLD, ambientLevelRef.current * 2.5)
+            if (rms > onsetThreshold) {
               speechFramesRef.current++
               if (speechFramesRef.current >= ONSET_FRAMES) {
-                console.debug(`[voice] capture start: rms=${rms.toFixed(3)} ambient=${ambientLevelRef.current.toFixed(3)} threshold=${onsetThreshold.toFixed(3)} speechRatio=${speechRatio.toFixed(3)} frames=${speechFramesRef.current}`)
+                console.debug(`[voice] capture start: rms=${rms.toFixed(3)} ambient=${ambientLevelRef.current.toFixed(3)} threshold=${onsetThreshold.toFixed(3)} frames=${speechFramesRef.current}`)
                 // Speech detected — record for wake word check
                 stateRef.current = 'capturing'
                 captureStartRef.current = Date.now()
@@ -339,18 +312,10 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
               ambientLevelRef.current * 1.3,
             )
 
-            // Debug: log capturing state periodically
-            if (Math.random() < 0.05) {
-              const elapsed = captureStartRef.current ? Date.now() - captureStartRef.current : 0
-              const silenceMs = silenceStartRef.current ? Date.now() - silenceStartRef.current : 0
-              console.debug(`[voice] capturing: rms=${rms.toFixed(3)} peak=${speechPeakRef.current.toFixed(3)} silenceThresh=${silenceThreshold.toFixed(3)} silenceMs=${silenceMs} elapsed=${elapsed}`)
-            }
-
             if (rms < silenceThreshold) {
               if (silenceStartRef.current === 0) {
                 silenceStartRef.current = Date.now()
               } else if (Date.now() - silenceStartRef.current > SILENCE_DURATION) {
-                console.debug(`[voice] capture complete — stopping recorder`)
                 stateRef.current = 'processing'
                 if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
                   mediaRecorderRef.current.stop()
