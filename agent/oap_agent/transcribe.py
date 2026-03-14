@@ -50,8 +50,14 @@ def _suppress_noise(audio_path: str) -> str | None:
     # Convert input to WAV (16kHz mono) for processing
     wav_path = audio_path + ".nr.wav"
     try:
+        # Find ffmpeg — Homebrew path not in launchd PATH
+        ffmpeg = "ffmpeg"
+        for p in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"):
+            if os.path.exists(p):
+                ffmpeg = p
+                break
         subprocess.run(
-            ["ffmpeg", "-i", audio_path, "-ar", "16000", "-ac", "1",
+            [ffmpeg, "-i", audio_path, "-ar", "16000", "-ac", "1",
              "-f", "wav", "-y", wav_path],
             capture_output=True, timeout=30,
         )
