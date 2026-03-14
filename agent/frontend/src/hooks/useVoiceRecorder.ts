@@ -1,8 +1,8 @@
 import { useRef, useState, useCallback } from 'react'
 
 // --- Continuous listening thresholds ---
-const SPEECH_THRESHOLD = 0.08    // RMS level to detect speech onset (raised to filter keyboard/mouse clicks)
-const ONSET_FRAMES = 25          // ~425ms of sustained signal before capture starts
+const SPEECH_THRESHOLD = 0.10    // RMS level to detect speech onset
+const ONSET_FRAMES = 30          // ~510ms of sustained signal before capture starts
 const SILENCE_DURATION = 1500    // ms of silence before auto-stop (wake word capture only)
 const SILENCE_DROP_RATIO = 0.3   // silence = RMS drops to 30% of peak speech level
 const AMBIENT_EMA_ALPHA = 0.01   // slow EMA for tracking ambient noise floor
@@ -244,10 +244,26 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
 
       const audioCtx = new AudioContext()
       const source = audioCtx.createMediaStreamSource(stream)
+
+      // Bandpass filter for speech frequencies (300Hz–3kHz) on the analyser
+      // path only — MediaRecorder still captures full-bandwidth audio.
+      // This makes VAD ignore TV bass/music and high-frequency effects.
+      const highpass = audioCtx.createBiquadFilter()
+      highpass.type = 'highpass'
+      highpass.frequency.value = 300
+      highpass.Q.value = 0.7
+
+      const lowpass = audioCtx.createBiquadFilter()
+      lowpass.type = 'lowpass'
+      lowpass.frequency.value = 3000
+      lowpass.Q.value = 0.7
+
       const analyser = audioCtx.createAnalyser()
       analyser.fftSize = 256
       analyser.smoothingTimeConstant = 0.4
-      source.connect(analyser)
+      source.connect(highpass)
+      highpass.connect(lowpass)
+      lowpass.connect(analyser)
       audioCtxRef.current = audioCtx
       analyserRef.current = analyser
 
