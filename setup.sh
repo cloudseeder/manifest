@@ -158,6 +158,13 @@ write_plist "com.oap.email" \
     "$REPO_DIR/email" \
     "no"
 
+write_plist "com.oap.email-scan" \
+    "/usr/bin/curl" \
+    "$REPO_DIR/email" \
+    "no" \
+    "900" \
+    "-s" "-X" "POST" "http://localhost:8305/scan"
+
 write_plist "com.oap.crawler" \
     "$VENV_DIR/bin/oap-crawl" \
     "$REPO_DIR/discovery" \
@@ -218,7 +225,7 @@ echo ""
 # --- Load all services ---
 
 echo "Loading services..."
-for label in com.oap.discovery com.oap.agent com.oap.reminder com.oap.email com.oap.crawler com.oap.log-rotate; do
+for label in com.oap.discovery com.oap.agent com.oap.reminder com.oap.email com.oap.email-scan com.oap.crawler com.oap.log-rotate; do
     launchctl load "$LAUNCH_DIR/$label.plist"
     echo "  Loaded $label"
 done
