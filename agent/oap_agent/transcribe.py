@@ -66,7 +66,7 @@ def _suppress_noise(audio_path: str) -> str | None:
 
         # Read, suppress noise, write
         data, sr = sf.read(wav_path, dtype="float32")
-        reduced = nr.reduce_noise(y=data, sr=sr, stationary=True, prop_decrease=0.75)
+        reduced = nr.reduce_noise(y=data, sr=sr, stationary=True, prop_decrease=0.4)
         sf.write(wav_path, reduced, sr)
         log.debug("Noise suppression applied: %s", wav_path)
         return wav_path
