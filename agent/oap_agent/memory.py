@@ -217,6 +217,10 @@ async def _semantic_dedup(
     if not candidate_vecs or len(candidate_vecs) != len(candidates):
         return candidates, None, existing_rows, existing_vecs
 
+    # Above this similarity, facts are nearly identical — skip regardless of
+    # subject check (catches "Father Gordon" vs "User's Dad" synonym mismatches)
+    hard_ceiling = 0.90
+
     kept: list[str] = []
     kept_vecs: list[list[float]] = []
     for i, (cand, cvec) in enumerate(zip(candidates, candidate_vecs)):
@@ -227,7 +231,9 @@ async def _semantic_dedup(
             if sim > max_sim:
                 max_sim = sim
                 best_match = existing_texts[j]
-        if max_sim >= threshold and _same_subject(cand, best_match):
+        if max_sim >= hard_ceiling:
+            log.info("Semantic dedup: '%.60s' ≈ '%.60s' (sim=%.3f), near-identical — skipping", cand, best_match, max_sim)
+        elif max_sim >= threshold and _same_subject(cand, best_match):
             log.info("Semantic dedup: '%.60s' ≈ '%.60s' (sim=%.3f), skipping", cand, best_match, max_sim)
         elif max_sim >= threshold:
             log.info("Semantic dedup: '%.60s' ≈ '%.60s' (sim=%.3f), different subjects — keeping", cand, best_match, max_sim)
