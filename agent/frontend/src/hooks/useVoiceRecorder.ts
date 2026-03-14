@@ -304,11 +304,11 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
 
             // Debug: log every ~2s so we can see actual values
             if (Math.random() < 0.03) {
-              const onsetDbg = Math.max(SPEECH_THRESHOLD, ambientLevelRef.current * 2.5)
+              const onsetDbg = Math.min(0.35, Math.max(SPEECH_THRESHOLD, ambientLevelRef.current * 1.5))
               console.debug(`[voice] passive: rms=${rms.toFixed(3)} ambient=${ambientLevelRef.current.toFixed(3)} threshold=${onsetDbg.toFixed(3)} speechRatio=${speechRatio.toFixed(3)} frames=${speechFramesRef.current}`)
             }
 
-            const onsetThreshold = Math.max(SPEECH_THRESHOLD, ambientLevelRef.current * 2.5)
+            const onsetThreshold = Math.min(0.35, Math.max(SPEECH_THRESHOLD, ambientLevelRef.current * 1.5))
             if (rms > onsetThreshold && speechRatio >= SPEECH_RATIO_MIN) {
               speechFramesRef.current++
               if (speechFramesRef.current >= ONSET_FRAMES) {
