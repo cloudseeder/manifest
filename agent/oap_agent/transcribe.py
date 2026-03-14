@@ -83,10 +83,20 @@ def transcribe(audio_path: str, language: str | None = None, initial_prompt: str
     if _model is None:
         raise RuntimeError("Whisper model not loaded — call init() first")
 
-    # Apply noise suppression if enabled
+    # Apply noise suppression for longer recordings only.
+    # Short clips (<3s) don't have enough data for noisereduce to build
+    # a noise profile — it treats speech as noise and destroys it.
     clean_path = None
     if _noise_suppress:
-        clean_path = _suppress_noise(audio_path)
+        try:
+            file_size = os.path.getsize(audio_path)
+            # WebM/opus at ~32kbps: 3s ≈ 12KB
+            if file_size > 12000:
+                clean_path = _suppress_noise(audio_path)
+            else:
+                log.debug("Skipping noise suppression for short audio (%d bytes)", file_size)
+        except OSError:
+            pass
 
     target = clean_path or audio_path
     kwargs: dict = {"language": language, "beam_size": 5}
