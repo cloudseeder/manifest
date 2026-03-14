@@ -37,6 +37,18 @@ for cmd in oap-api oap-agent-api oap-reminder-api oap-email-api; do
     fi
 done
 
+EMAIL_ENABLED=false
+if [ -f "$REPO_DIR/email/config.yaml" ]; then
+    EMAIL_ENABLED=true
+else
+    echo "Note: Email scanner skipped — no config found."
+    echo "  To enable it:"
+    echo "    cp email/config.yaml.example email/config.yaml"
+    echo "    # Edit email/config.yaml with your IMAP host, username, and app password"
+    echo "    ./setup.sh"
+    echo ""
+fi
+
 if ! command -v ollama &>/dev/null; then
     echo "ERROR: ollama not found. Install from https://ollama.com/download"
     exit 1
@@ -153,17 +165,19 @@ write_plist "com.oap.reminder" \
     "$REPO_DIR/reminder" \
     "no"
 
-write_plist "com.oap.email" \
-    "$VENV_DIR/bin/oap-email-api" \
-    "$REPO_DIR/email" \
-    "no"
+if [ "$EMAIL_ENABLED" = true ]; then
+    write_plist "com.oap.email" \
+        "$VENV_DIR/bin/oap-email-api" \
+        "$REPO_DIR/email" \
+        "no"
 
-write_plist "com.oap.email-scan" \
-    "/usr/bin/curl" \
-    "$REPO_DIR/email" \
-    "no" \
-    "900" \
-    "-s" "-X" "POST" "http://localhost:8305/scan"
+    write_plist "com.oap.email-scan" \
+        "/usr/bin/curl" \
+        "$REPO_DIR/email" \
+        "no" \
+        "900" \
+        "-s" "-X" "POST" "http://localhost:8305/scan"
+fi
 
 write_plist "com.oap.crawler" \
     "$VENV_DIR/bin/oap-crawl" \
@@ -225,7 +239,13 @@ echo ""
 # --- Load all services ---
 
 echo "Loading services..."
-for label in com.oap.discovery com.oap.agent com.oap.reminder com.oap.email com.oap.email-scan com.oap.crawler com.oap.log-rotate; do
+SERVICES="com.oap.discovery com.oap.agent com.oap.reminder"
+if [ "$EMAIL_ENABLED" = true ]; then
+    SERVICES="$SERVICES com.oap.email com.oap.email-scan"
+fi
+SERVICES="$SERVICES com.oap.crawler com.oap.log-rotate"
+
+for label in $SERVICES; do
     launchctl load "$LAUNCH_DIR/$label.plist"
     echo "  Loaded $label"
 done
@@ -243,7 +263,10 @@ INTERVAL=5
 ELAPSED=0
 
 # Build list of services to check
-REMAINING="8300:Discovery:discovery:/health 8303:Agent:agent:/v1/agent/health 8304:Reminder:reminder:/reminders 8305:Email:email:/health"
+REMAINING="8300:Discovery:discovery:/health 8303:Agent:agent:/v1/agent/health 8304:Reminder:reminder:/reminders"
+if [ "$EMAIL_ENABLED" = true ]; then
+    REMAINING="$REMAINING 8305:Email:email:/health"
+fi
 
 while [ $ELAPSED -lt $MAX_WAIT ] && [ -n "$REMAINING" ]; do
     sleep $INTERVAL
@@ -280,8 +303,10 @@ echo ""
 echo "Open http://localhost:8303 to start chatting."
 echo ""
 echo "Logs:"
-echo "  tail -f /tmp/com.oap.discovery.log"
-echo "  tail -f /tmp/com.oap.agent.log"
-echo "  tail -f /tmp/com.oap.reminder.log"
-echo "  tail -f /tmp/com.oap.email.log"
-echo "  tail -f /tmp/com.oap.crawler.log"
+echo "  tail -f /tmp/com.oap.discovery.err"
+echo "  tail -f /tmp/com.oap.agent.err"
+echo "  tail -f /tmp/com.oap.reminder.err"
+if [ "$EMAIL_ENABLED" = true ]; then
+    echo "  tail -f /tmp/com.oap.email.err"
+fi
+echo "  tail -f /tmp/com.oap.crawler.err"
