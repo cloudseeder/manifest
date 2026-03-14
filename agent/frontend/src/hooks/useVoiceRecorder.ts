@@ -231,6 +231,8 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
     restartingRef.current = true
     stateRef.current = 'passive'
     speechFramesRef.current = 0
+    // Reset ambient so threshold doesn't stay inflated from prior speech
+    ambientLevelRef.current = 0
     silenceStartRef.current = 0
     captureStartRef.current = 0
     speechPeakRef.current = 0
