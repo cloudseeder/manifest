@@ -26,7 +26,6 @@ CREATE TABLE IF NOT EXISTS reminders (
 
 CREATE INDEX IF NOT EXISTS idx_reminders_status ON reminders(status);
 CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(due_date);
-CREATE INDEX IF NOT EXISTS idx_reminders_place ON reminders(place);
 """
 
 
@@ -72,9 +71,9 @@ class ReminderDB:
         cols = {r[1] for r in self.conn.execute("PRAGMA table_info(reminders)").fetchall()}
         if "place" not in cols:
             self.conn.execute("ALTER TABLE reminders ADD COLUMN place TEXT")
-            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_reminders_place ON reminders(place)")
             self.conn.commit()
             log.info("Migrated: added 'place' column to reminders")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_reminders_place ON reminders(place)")
 
     def close(self) -> None:
         self.conn.close()
