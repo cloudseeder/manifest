@@ -2,7 +2,7 @@ import { useRef, useState, useCallback } from 'react'
 
 // --- Continuous listening thresholds ---
 const SPEECH_THRESHOLD = 0.08    // RMS level to detect speech onset
-const ONSET_FRAMES = 15          // ~255ms of sustained signal before capture starts
+const ONSET_FRAMES = 20          // ~340ms of sustained signal before capture starts
 const SILENCE_DURATION = 800     // ms of silence before auto-stop (wake word capture only)
 const SILENCE_DROP_RATIO = 0.3   // silence = RMS drops to 30% of peak speech level
 const AMBIENT_EMA_ALPHA = 0.01   // slow EMA for tracking ambient noise floor
@@ -326,8 +326,8 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
               ? rms
               : ambientLevelRef.current * (1 - AMBIENT_EMA_ALPHA) + rms * AMBIENT_EMA_ALPHA
 
-            // Cap at 0.35 so conference mic AGC can't push threshold out of reach
-            const onsetThreshold = Math.min(0.35, Math.max(SPEECH_THRESHOLD, ambientLevelRef.current * 2.5))
+            // Cap at 0.45 so conference mic AGC can't push threshold out of reach
+            const onsetThreshold = Math.min(0.45, Math.max(SPEECH_THRESHOLD, ambientLevelRef.current * 2.5))
             if (rms > onsetThreshold) {
               speechFramesRef.current++
               if (speechFramesRef.current >= ONSET_FRAMES) {
