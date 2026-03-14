@@ -38,6 +38,7 @@ class VoiceConfig:
     tts_model_path: str = ""          # path to .onnx voice file
     tts_models_dir: str = "piper-voices"  # dir to scan for available voices
     tts_length_scale: float = 1.0     # speech speed: <1.0 = faster, >1.0 = slower
+    noise_suppress: bool = True       # pre-process audio with noisereduce before STT
 
 
 @dataclass
@@ -112,6 +113,7 @@ def load_config(config_path: str = "config.yaml") -> AgentConfig:
         cfg.voice.tts_enabled = v.get("tts_enabled", cfg.voice.tts_enabled)
         cfg.voice.tts_model_path = v.get("tts_model_path", cfg.voice.tts_model_path)
         cfg.voice.tts_models_dir = v.get("tts_models_dir", cfg.voice.tts_models_dir)
+        cfg.voice.noise_suppress = v.get("noise_suppress", cfg.voice.noise_suppress)
 
     if "escalation" in raw:
         esc = raw["escalation"]

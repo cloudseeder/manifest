@@ -103,7 +103,7 @@ async def lifespan(app: FastAPI):
     if cfg.voice.enabled:
         try:
             from . import transcribe as _tx
-            _tx.init(cfg.voice.whisper_model, cfg.voice.device, cfg.voice.compute_type)
+            _tx.init(cfg.voice.whisper_model, cfg.voice.device, cfg.voice.compute_type, cfg.voice.noise_suppress)
             log.info("Whisper %s loaded — voice input ready", cfg.voice.whisper_model)
         except Exception as exc:
             log.warning("Whisper model failed to load — voice input disabled: %s", exc)

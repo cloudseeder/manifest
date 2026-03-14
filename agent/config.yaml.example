@@ -16,3 +16,4 @@ voice:
   tts_enabled: true
   tts_model_path: ""          # absolute path to .onnx voice file
   tts_models_dir: "piper-voices"  # directory to scan for available voices
+  noise_suppress: true            # pre-process audio with noisereduce before STT
