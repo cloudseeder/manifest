@@ -4,11 +4,22 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any
 
 import httpx
 
 from .config import EscalationConfig
+
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _strip_think(text: str) -> str:
+    """Strip qwen3 thinking tags — both complete and orphaned closing tags."""
+    text = _THINK_RE.sub("", text)
+    # Handle orphaned </think> when opening tag was truncated
+    text = text.replace("</think>", "")
+    return text.strip()
 
 log = logging.getLogger("oap.agent.executor")
 
@@ -65,7 +76,7 @@ async def execute_chat(
     # Extract content from Ollama-style response
     message = raw.get("message", {})
     if isinstance(message, dict):
-        content = message.get("content", "")
+        content = _strip_think(message.get("content", ""))
 
     # Extract tool calls from debug trace
     if debug and "oap_debug" in raw:
@@ -128,7 +139,7 @@ async def execute_conversational(
     content = ""
     message = raw.get("message", {})
     if isinstance(message, dict):
-        content = message.get("content", "")
+        content = _strip_think(message.get("content", ""))
 
     return {
         "content": content,
