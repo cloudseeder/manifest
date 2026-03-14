@@ -169,8 +169,7 @@ echo ""
 
 # --- Log rotation script ---
 
-LOG_ROTATE_SCRIPT="$REPO_DIR/scripts/rotate-logs.sh"
-mkdir -p "$REPO_DIR/scripts"
+LOG_ROTATE_SCRIPT="$REPO_DIR/rotate-logs.sh"
 echo "Creating log rotation script..."
 
 cat > "$LOG_ROTATE_SCRIPT" <<'ROTATE'
