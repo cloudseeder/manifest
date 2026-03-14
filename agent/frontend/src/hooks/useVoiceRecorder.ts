@@ -169,11 +169,18 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
       const form = new FormData()
       form.append('file', blob, 'recording.webm')
       const res = await fetch('/v1/agent/transcribe', { method: 'POST', body: form })
-      if (!res.ok) return
+      if (!res.ok) {
+        console.debug(`[voice] transcribe failed: ${res.status}`)
+        return
+      }
 
-      const { text } = await res.json()
-      const trimmed = text?.trim()
-      if (!trimmed) return
+      const data = await res.json()
+      console.debug(`[voice] transcribe result:`, data)
+      const trimmed = data?.text?.trim()
+      if (!trimmed) {
+        console.debug(`[voice] empty transcription — discarding`)
+        return
+      }
 
       if (!wakeWordRef.current) {
         // No wake word configured — send everything
