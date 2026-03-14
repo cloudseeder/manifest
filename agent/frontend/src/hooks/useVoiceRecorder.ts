@@ -144,6 +144,12 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
   const ambientLevelRef = useRef(0)
   const speechPeakRef = useRef(0)
   const restartingRef = useRef(false)
+  // Rolling audio buffer — captures audio BEFORE onset detection triggers.
+  // Without this, the wake word is clipped because MediaRecorder only
+  // captures from when it starts, not retroactively.
+  const passiveRecorderRef = useRef<MediaRecorder | null>(null)
+  const ringBufferRef = useRef<Blob[]>([])
+  const RING_BUFFER_MAX = 8  // chunks at 250ms each = 2 seconds of lookback
 
   const onResultRef = useRef(onResult)
   onResultRef.current = onResult
@@ -224,6 +230,31 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
     startMediaRecorder(streamRef.current, true)
   }
 
+  /** Start a passive MediaRecorder that feeds the rolling buffer. */
+  function startPassiveRecorder(stream: MediaStream) {
+    // Stop existing passive recorder if any
+    if (passiveRecorderRef.current && passiveRecorderRef.current.state !== 'inactive') {
+      passiveRecorderRef.current.stop()
+    }
+    ringBufferRef.current = []
+    const recorder = new MediaRecorder(stream, {
+      mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm',
+    })
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0 && stateRef.current === 'passive') {
+        ringBufferRef.current.push(e.data)
+        // Keep only the last N chunks (~2s of lookback)
+        if (ringBufferRef.current.length > RING_BUFFER_MAX) {
+          ringBufferRef.current.shift()
+        }
+      }
+    }
+    recorder.start(250)  // emit chunk every 250ms
+    passiveRecorderRef.current = recorder
+  }
+
   /** Return to passive monitoring. */
   function goPassive() {
     if (!continuousRef.current || restartingRef.current) return
@@ -239,6 +270,8 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
     setRecording(false)
     setListening(true)
     setAttentive(false)
+    // Restart passive recorder for rolling buffer
+    if (streamRef.current) startPassiveRecorder(streamRef.current)
     restartingRef.current = false
   }
 
@@ -271,6 +304,9 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
         speechPeakRef.current = 0
         setListening(true)
 
+        // Start passive recorder for rolling buffer
+        startPassiveRecorder(stream)
+
         function updateLevelContinuous() {
           if (!analyserRef.current) return
           analyserRef.current.getByteFrequencyData(dataArray)
@@ -295,12 +331,18 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
             if (rms > onsetThreshold) {
               speechFramesRef.current++
               if (speechFramesRef.current >= ONSET_FRAMES) {
-                console.debug(`[voice] capture start: rms=${rms.toFixed(3)} ambient=${ambientLevelRef.current.toFixed(3)} threshold=${onsetThreshold.toFixed(3)} frames=${speechFramesRef.current}`)
-                // Speech detected — record for wake word check
+                console.debug(`[voice] capture start: rms=${rms.toFixed(3)} ambient=${ambientLevelRef.current.toFixed(3)} threshold=${onsetThreshold.toFixed(3)} frames=${speechFramesRef.current} buffer=${ringBufferRef.current.length}`)
+                // Speech detected — stop passive recorder and grab its buffer
                 stateRef.current = 'capturing'
                 captureStartRef.current = Date.now()
                 silenceStartRef.current = 0
                 speechPeakRef.current = rms
+                // Stop passive recorder — its chunks become the lookback buffer
+                if (passiveRecorderRef.current && passiveRecorderRef.current.state !== 'inactive') {
+                  passiveRecorderRef.current.stop()
+                }
+                // Seed capture chunks with the ring buffer (last ~2s of audio)
+                chunksRef.current = [...ringBufferRef.current]
                 startMediaRecorder(stream, false)
                 setRecording(true)
                 setListening(false)
@@ -462,6 +504,11 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
     }
+    if (passiveRecorderRef.current && passiveRecorderRef.current.state !== 'inactive') {
+      passiveRecorderRef.current.stop()
+    }
+    passiveRecorderRef.current = null
+    ringBufferRef.current = []
 
     cancelAnimationFrame(levelRafRef.current)
     audioLevelRef.current = 0
