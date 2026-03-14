@@ -986,6 +986,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
         "Make ONE tool call with your best parameters. If the result is empty, report that "
         "no results were found — do NOT retry with different filters, broader queries, or "
         "removed constraints. Empty results are normal and expected. "
+        "NEVER use markdown tables — use plain text or bullet lists instead. "
         "After a tool result, reply in 1-2 sentences"
         + (" in character." if caller_system else ".")
     )
