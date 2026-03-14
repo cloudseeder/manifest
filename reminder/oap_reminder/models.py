@@ -76,6 +76,7 @@ class ReminderCreate(BaseModel):
     due_date: str | None = None
     due_time: str | None = None
     recurring: str | None = None
+    place: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -98,6 +99,9 @@ class ReminderCreate(BaseModel):
             for alias in ("name", "reminder", "task", "subject"):
                 if alias in data and "title" not in data:
                     data["title"] = data.pop(alias)
+            for alias in ("location", "at", "where", "store"):
+                if alias in data and "place" not in data:
+                    data["place"] = data.pop(alias)
         return data
 
     @field_validator("title")
@@ -143,6 +147,7 @@ class ReminderUpdate(BaseModel):
     due_time: str | None = None
     recurring: str | None = None
     status: str | None = None
+    place: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -163,6 +168,9 @@ class ReminderUpdate(BaseModel):
             for alias in ("name", "reminder", "task", "subject"):
                 if alias in data and "title" not in data:
                     data["title"] = data.pop(alias)
+            for alias in ("location", "at", "where", "store"):
+                if alias in data and "place" not in data:
+                    data["place"] = data.pop(alias)
         return data
 
     @field_validator("due_date")

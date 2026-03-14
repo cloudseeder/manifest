@@ -20,11 +20,13 @@ CREATE TABLE IF NOT EXISTS reminders (
     due_time     TEXT,
     recurring    TEXT,
     status       TEXT NOT NULL DEFAULT 'pending',
-    completed_at TEXT
+    completed_at TEXT,
+    place        TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_reminders_status ON reminders(status);
 CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(due_date);
+CREATE INDEX IF NOT EXISTS idx_reminders_place ON reminders(place);
 """
 
 
@@ -63,7 +65,16 @@ class ReminderDB:
         self.conn.execute("PRAGMA foreign_keys=ON")
         self._lock = threading.Lock()
         self.conn.executescript(_SCHEMA)
+        self._migrate()
         log.info("Database opened: %s", path)
+
+    def _migrate(self) -> None:
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(reminders)").fetchall()}
+        if "place" not in cols:
+            self.conn.execute("ALTER TABLE reminders ADD COLUMN place TEXT")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_reminders_place ON reminders(place)")
+            self.conn.commit()
+            log.info("Migrated: added 'place' column to reminders")
 
     def close(self) -> None:
         self.conn.close()
@@ -75,13 +86,14 @@ class ReminderDB:
         due_date: str | None = None,
         due_time: str | None = None,
         recurring: str | None = None,
+        place: str | None = None,
     ) -> dict:
         now = _now()
         with self._lock:
             cur = self.conn.execute(
-                """INSERT INTO reminders (title, notes, created_at, due_date, due_time, recurring)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (title, notes, now, due_date, due_time, recurring),
+                """INSERT INTO reminders (title, notes, created_at, due_date, due_time, recurring, place)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (title, notes, now, due_date, due_time, recurring, place),
             )
             self.conn.commit()
         return self.get(cur.lastrowid)
@@ -144,6 +156,7 @@ class ReminderDB:
                 due_date=next_date,
                 due_time=reminder["due_time"],
                 recurring=reminder["recurring"],
+                place=reminder["place"],
             )
             result["next"] = next_reminder
 
@@ -177,13 +190,37 @@ class ReminderDB:
         return [dict(r) for r in rows], total
 
     def list_due(self, before: str | None = None) -> list[dict]:
-        """List pending reminders due on or before a date (default: today)."""
+        """List pending reminders due on or before a date (default: today).
+
+        Excludes place-only reminders (place set, no due_date) since those
+        surface via list_by_place() when the user says they're going somewhere.
+        """
         before = before or _today()
         rows = self.conn.execute(
             """SELECT * FROM reminders
                WHERE status = 'pending' AND due_date IS NOT NULL AND due_date <= ?
                ORDER BY due_date ASC, due_time ASC""",
             (before,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_by_place(self, place: str) -> list[dict]:
+        """List pending reminders matching a place (case-insensitive substring).
+
+        Strips common articles ('the', 'a', 'an') from both the query and
+        stored values for fuzzy matching.
+        """
+        normalized = place.lower().strip()
+        for article in ("the ", "a ", "an "):
+            if normalized.startswith(article):
+                normalized = normalized[len(article):]
+        rows = self.conn.execute(
+            """SELECT * FROM reminders
+               WHERE status = 'pending' AND place IS NOT NULL
+               AND LOWER(REPLACE(REPLACE(REPLACE(place, 'the ', ''), 'a ', ''), 'an ', ''))
+                   LIKE '%' || ? || '%'
+               ORDER BY created_at ASC""",
+            (normalized,),
         ).fetchall()
         return [dict(r) for r in rows]
 

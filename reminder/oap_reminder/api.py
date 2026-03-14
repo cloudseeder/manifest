@@ -109,6 +109,9 @@ async def ical_feed():
         if r.get("notes"):
             desc = r["notes"].replace(",", "\\,").replace("\n", "\\n")
             lines.append(f"DESCRIPTION:{desc}")
+        if r.get("place"):
+            loc = r["place"].replace(",", "\\,")
+            lines.append(f"LOCATION:{loc}")
         if r.get("recurring"):
             freq = r["recurring"].upper()
             lines.append(f"RRULE:FREQ={freq}")
@@ -149,6 +152,7 @@ async def dispatch(body: dict):
             due_date=validated.due_date,
             due_time=validated.due_time,
             recurring=validated.recurring,
+            place=validated.place,
         )
     elif action in ("list", "list_all", "show", "all"):
         reminders, total = _db.list_all(
@@ -205,7 +209,7 @@ async def dispatch(body: dict):
             raise HTTPException(status_code=400, detail="'id' or 'title' required for update")
         # Pass body through ReminderUpdate (normalize_aliases handles renaming)
         # then extract only known fields the model explicitly set.
-        _UPDATE_FIELDS = {"title", "notes", "due_date", "due_time", "recurring", "status"}
+        _UPDATE_FIELDS = {"title", "notes", "due_date", "due_time", "recurring", "status", "place"}
         try:
             validated = ReminderUpdate(**body)
         except Exception as exc:
@@ -220,12 +224,18 @@ async def dispatch(body: dict):
         if not reminder:
             raise HTTPException(status_code=404, detail="Reminder not found")
         return reminder
+    elif action in ("place", "at", "going_to", "location"):
+        place = body.get("place") or body.get("location")
+        if not place:
+            raise HTTPException(status_code=400, detail="'place' required for place action")
+        reminders = _db.list_by_place(place)
+        return {"reminders": reminders, "total": len(reminders)}
     elif action in ("cleanup", "purge"):
         days = int(body.get("older_than_days", 30))
         deleted = _db.cleanup_completed(days)
         return {"deleted": deleted, "older_than_days": days}
     else:
-        raise HTTPException(status_code=400, detail=f"Unknown action: {action}. Use: create, list, due, complete, delete, get, cleanup")
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}. Use: create, list, due, place, complete, delete, get, cleanup")
 
 
 @app.post("/reminders", status_code=201)
@@ -240,6 +250,7 @@ async def create_reminder(body: ReminderCreate):
         due_date=body.due_date,
         due_time=body.due_time,
         recurring=body.recurring,
+        place=body.place,
     )
     return reminder
 
