@@ -3,8 +3,9 @@ import { useRef, useState, useCallback } from 'react'
 // --- Continuous listening thresholds ---
 const SPEECH_THRESHOLD = 0.08    // RMS level to detect speech onset
 const ONSET_FRAMES = 25          // ~425ms of sustained signal before capture starts
-const SPEECH_FREQ_LOW = 300      // Hz — lower bound of speech bandpass for VAD
-const SPEECH_FREQ_HIGH = 3000    // Hz — upper bound of speech bandpass for VAD
+const SPEECH_FREQ_LOW = 300      // Hz — lower bound of speech band for VAD
+const SPEECH_FREQ_HIGH = 3000    // Hz — upper bound of speech band for VAD
+const SPEECH_RATIO_MIN = 0.4     // minimum speech-band energy ratio to trigger capture
 const SILENCE_DURATION = 1500    // ms of silence before auto-stop (wake word capture only)
 const SILENCE_DROP_RATIO = 0.3   // silence = RMS drops to 30% of peak speech level
 const AMBIENT_EMA_ALPHA = 0.01   // slow EMA for tracking ambient noise floor
@@ -274,14 +275,18 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
           if (!analyserRef.current) return
           analyserRef.current.getByteFrequencyData(dataArray)
 
-          // RMS over speech-frequency bins only (300Hz–3kHz)
-          let sum = 0
-          const binCount = speechBinHigh - speechBinLow + 1
-          for (let i = speechBinLow; i <= speechBinHigh; i++) {
+          // Full-spectrum RMS for reliable level detection
+          let totalSum = 0
+          let speechSum = 0
+          for (let i = 0; i < dataArray.length; i++) {
             const v = dataArray[i] / 255
-            sum += v * v
+            const vv = v * v
+            totalSum += vv
+            if (i >= speechBinLow && i <= speechBinHigh) speechSum += vv
           }
-          const rms = Math.min(1, Math.sqrt(sum / binCount) * 2.5)
+          const rms = Math.min(1, Math.sqrt(totalSum / dataArray.length) * 2.5)
+          // Speech-band energy ratio: high for voice, low for TV/music
+          const speechRatio = totalSum > 0 ? speechSum / totalSum : 0
           audioLevelRef.current = rms
 
           const state = stateRef.current
@@ -293,10 +298,10 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
               : ambientLevelRef.current * (1 - AMBIENT_EMA_ALPHA) + rms * AMBIENT_EMA_ALPHA
 
             const onsetThreshold = Math.max(SPEECH_THRESHOLD, ambientLevelRef.current * 2.5)
-            if (rms > onsetThreshold) {
+            if (rms > onsetThreshold && speechRatio >= SPEECH_RATIO_MIN) {
               speechFramesRef.current++
               if (speechFramesRef.current >= ONSET_FRAMES) {
-                console.debug(`[voice] capture start: rms=${rms.toFixed(3)} ambient=${ambientLevelRef.current.toFixed(3)} threshold=${onsetThreshold.toFixed(3)} frames=${speechFramesRef.current}`)
+                console.debug(`[voice] capture start: rms=${rms.toFixed(3)} ambient=${ambientLevelRef.current.toFixed(3)} threshold=${onsetThreshold.toFixed(3)} speechRatio=${speechRatio.toFixed(3)} frames=${speechFramesRef.current}`)
                 // Speech detected — record for wake word check
                 stateRef.current = 'capturing'
                 captureStartRef.current = Date.now()
