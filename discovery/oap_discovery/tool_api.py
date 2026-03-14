@@ -987,8 +987,10 @@ async def chat_proxy(req: ChatRequest) -> Any:
         "no results were found — do NOT retry with different filters, broader queries, or "
         "removed constraints. Empty results are normal and expected. "
         "NEVER use markdown tables — use plain text or bullet lists instead. "
-        "After a tool result, reply in 1-2 sentences"
-        + (" in character." if caller_system else ".")
+        "After a tool result, reply in 1-2 sentences. "
+        "ONLY mention information directly relevant to the task result — "
+        "do NOT bring up unrelated facts, memories, or topics to fill space"
+        + (" — stay in character but stay on topic." if caller_system else ".")
     )
 
     if failure_hints:
