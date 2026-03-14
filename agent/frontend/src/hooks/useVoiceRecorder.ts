@@ -185,6 +185,7 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
       }
 
       const { found, remainder } = parseWakeWord(trimmed, wakeWordRef.current)
+      console.debug(`[voice] wake check: transcript="${trimmed}" wakeWord="${wakeWordRef.current}" found=${found} remainder="${remainder}"`)
       if (found && remainder) {
         // Wake word + request in one breath — send it, then go attentive
         // to stay listening for more
