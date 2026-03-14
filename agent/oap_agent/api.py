@@ -1246,7 +1246,11 @@ async def transcribe_audio(file: UploadFile = File(...)):
         tmp.write(data)
         tmp_path = tmp.name
     try:
-        text = tx.transcribe(tmp_path, language=_voice_cfg.language)
+        try:
+            text = tx.transcribe(tmp_path, language=_voice_cfg.language)
+        except Exception as exc:
+            log.warning("Transcription failed (corrupt audio?): %s", exc)
+            return {"text": ""}
         log.info("STT result: %r (noise_suppress=%s)", text, _voice_cfg.noise_suppress)
         return {"text": text}
     finally:

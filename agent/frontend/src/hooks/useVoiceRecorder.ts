@@ -154,7 +154,8 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
 
   /** Transcribe wake word capture. If wake word found, go attentive. */
   const transcribeWakeCheck = useCallback(async (blob: Blob) => {
-    if (blob.size === 0) {
+    // Skip empty or tiny blobs (corrupt WebM fragments crash whisper)
+    if (blob.size < 1000) {
       if (continuousRef.current) goPassive()
       return
     }
