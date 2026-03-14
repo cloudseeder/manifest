@@ -1252,7 +1252,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
             settings = _db.get_settings()
             wake = settings.get("voice_wake_word") or settings.get("persona_name") or ""
             if wake:
-                prompt = f"Hey {wake}, {wake},"
+                prompt = f"{wake},"
         text = tx.transcribe(tmp_path, language=_voice_cfg.language, initial_prompt=prompt)
         log.info("STT result: %r (prompt=%r, noise_suppress=%s)", text, prompt, _voice_cfg.noise_suppress)
         return {"text": text}
