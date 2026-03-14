@@ -281,7 +281,8 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
               ? rms
               : ambientLevelRef.current * (1 - AMBIENT_EMA_ALPHA) + rms * AMBIENT_EMA_ALPHA
 
-            const onsetThreshold = Math.max(SPEECH_THRESHOLD, ambientLevelRef.current * 2.5)
+            // Cap at 0.35 so conference mic AGC can't push threshold out of reach
+            const onsetThreshold = Math.min(0.35, Math.max(SPEECH_THRESHOLD, ambientLevelRef.current * 2.5))
             if (rms > onsetThreshold) {
               speechFramesRef.current++
               if (speechFramesRef.current >= ONSET_FRAMES) {
