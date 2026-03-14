@@ -54,6 +54,12 @@ if ! command -v ollama &>/dev/null; then
     exit 1
 fi
 
+if ! command -v ffmpeg &>/dev/null; then
+    echo "ERROR: ffmpeg not found (required for voice noise suppression)"
+    echo "  Install with: brew install ffmpeg"
+    exit 1
+fi
+
 # --- Generate or prompt for backend secret ---
 
 if [ -n "${OAP_BACKEND_SECRET:-}" ]; then
