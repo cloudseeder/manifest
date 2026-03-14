@@ -154,8 +154,8 @@ def _extract_subject(fact: str) -> str | None:
     is about the user (implicit subject).
     """
     _REL_PREFIX = re.compile(
-        r"^(?:son|daughter|wife|husband|dog|cat|pet|child|partner|mom|dad|"
-        r"mother|father|brother|sister|grandparents?|user'?s?\s+\w+)\s+",
+        r"^(?:son|daughter|wife|husband|dog|cat|pet|child|children|partner|mom|dad|"
+        r"mother|father|brother|sister|parents|grandparents?|user'?s?\s+\w+)\s+",
         re.IGNORECASE,
     )
     text = _REL_PREFIX.sub("", fact)  # Strip relationship prefix
@@ -345,6 +345,7 @@ async def _check_supersession(
             return []
 
         supersessions: list[tuple[str, str]] = []
+        claimed_old_ids: set[str] = set()  # prevent multiple candidates claiming same fact
         for r in replacements_raw:
             if not isinstance(r, dict):
                 continue
@@ -357,6 +358,20 @@ async def _check_supersession(
             if old_idx not in old_idx_map:
                 continue
             old_id, old_text = old_idx_map[old_idx]
+            # Subject guardrail: LLM sometimes matches on location/detail overlap
+            if not _same_subject(candidates[new_idx], old_text):
+                log.info(
+                    "Supersession rejected (different subjects): '%s' vs '%s'",
+                    candidates[new_idx], old_text,
+                )
+                continue
+            if old_id in claimed_old_ids:
+                log.info(
+                    "Supersession skipped (already claimed): '%s' for '%s' (id=%s)",
+                    candidates[new_idx], old_text, old_id,
+                )
+                continue
+            claimed_old_ids.add(old_id)
             log.info(
                 "Supersession: '%s' replaces '%s' (id=%s)",
                 candidates[new_idx], old_text, old_id,
