@@ -1,0 +1,14 @@
+*.db
+*.egg-info/
+__pycache__/
+.DS_Store
+node_modules/
+discovery/config.yaml
+agent/config.yaml
+email/config.yaml
+reminder/config.yaml
+discovery/credentials.yaml
+piper-voices/
+*.pem
+.claude/
+.venv/
