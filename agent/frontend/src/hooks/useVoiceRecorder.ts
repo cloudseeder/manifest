@@ -269,14 +269,19 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
 
     createRecorder()
 
-    // Restart recorder every 5s during passive mode to keep audio
-    // fresh without unbounded chunk growth. Skip restart if capturing.
+    // Restart recorder every 8s during passive mode. Each restart
+    // produces a fresh valid WebM. The old recorder's onstop skips
+    // transcription (state is passive, not processing).
     recorderRestartTimer.current = setInterval(() => {
       if (stateRef.current !== 'passive') return
-      if (!continuousRecorderRef.current || continuousRecorderRef.current.state === 'inactive') return
-      try { continuousRecorderRef.current.stop() } catch {}
+      const old = continuousRecorderRef.current
+      if (!old || old.state === 'inactive') return
+      // Create new recorder FIRST, then stop old one.
+      // Old onstop will fire async but won't interfere since
+      // chunksRef was already reset by createRecorder().
       createRecorder()
-    }, 5000)
+      try { old.stop() } catch {}
+    }, 8000)
   }
 
   /** Return to passive monitoring. */
