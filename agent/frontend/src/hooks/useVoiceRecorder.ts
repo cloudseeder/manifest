@@ -422,9 +422,31 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
             } else {
               silenceStartRef.current = 0
             }
+          } else if (state === 'attentive') {
+            // Auto-stop attentive mode on extended silence (hands-free)
+            if (rms > speechPeakRef.current) {
+              speechPeakRef.current = rms
+            } else {
+              speechPeakRef.current = speechPeakRef.current * (1 - SPEECH_EMA_ALPHA) + rms * SPEECH_EMA_ALPHA
+            }
+            const silenceThreshold = Math.max(
+              speechPeakRef.current * SILENCE_DROP_RATIO,
+              ambientLevelRef.current * 1.3,
+            )
+            if (rms < silenceThreshold) {
+              if (silenceStartRef.current === 0) {
+                silenceStartRef.current = Date.now()
+              } else if (Date.now() - silenceStartRef.current > 2000) {
+                // 2 seconds of silence — stop and transcribe
+                if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+                  mediaRecorderRef.current.stop()
+                }
+                setRecording(false)
+              }
+            } else {
+              silenceStartRef.current = 0
+            }
           }
-          // 'attentive': just keep the RAF loop running for audio levels
-          // MediaRecorder runs until manual stop — no silence detection
 
           levelRafRef.current = requestAnimationFrame(updateLevelContinuous)
         }
