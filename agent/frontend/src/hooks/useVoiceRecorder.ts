@@ -145,9 +145,10 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
   const speechPeakRef = useRef(0)
   const restartingRef = useRef(false)
   // Continuous recorder — runs throughout passive+capturing states so
-  // the wake word audio is never clipped. One MediaRecorder instance
-  // captures everything; we just stop it when silence is detected.
+  // the wake word audio is never clipped. Restarted every few seconds
+  // during passive mode to keep audio fresh and prevent unbounded growth.
   const continuousRecorderRef = useRef<MediaRecorder | null>(null)
+  const recorderRestartTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const onResultRef = useRef(onResult)
   onResultRef.current = onResult
@@ -231,35 +232,51 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
   }
 
   /** Start a continuous MediaRecorder for passive+capturing states.
-   *  Runs until silence is detected, then stops and triggers transcription
-   *  via the onstop handler. The audio includes everything from when
-   *  passive mode started, so the wake word is never clipped. */
+   *  Restarts every 5s during passive mode to keep audio fresh.
+   *  When silence is detected during capturing, stops and sends
+   *  all chunks (including pre-onset wake word audio) to transcription. */
   function startContinuousRecorder(stream: MediaStream) {
     if (continuousRecorderRef.current && continuousRecorderRef.current.state !== 'inactive') {
-      continuousRecorderRef.current.stop()
+      try { continuousRecorderRef.current.stop() } catch {}
     }
-    chunksRef.current = []
-    const recorder = new MediaRecorder(stream, {
-      mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm',
-    })
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) {
-        chunksRef.current.push(e.data)
-        // Cap at ~30 seconds (120 chunks at 250ms). First chunk has the
-        // WebM header so we always keep it; drop from position 1.
-        if (chunksRef.current.length > 120) {
-          chunksRef.current = [chunksRef.current[0], ...chunksRef.current.slice(-80)]
-        }
+    if (recorderRestartTimer.current) {
+      clearInterval(recorderRestartTimer.current)
+      recorderRestartTimer.current = null
+    }
+
+    function createRecorder() {
+      chunksRef.current = []
+      const recorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm',
+      })
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data)
       }
+      recorder.onstop = async () => {
+        // Only transcribe if we were in capturing/processing state
+        if (stateRef.current === 'processing') {
+          const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+          await transcribeWakeCheck(blob)
+        }
+        // If passive restart triggered the stop, the interval will
+        // create a new recorder — nothing to do here
+      }
+      recorder.start(250)
+      continuousRecorderRef.current = recorder
     }
-    recorder.onstop = async () => {
-      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-      await transcribeWakeCheck(blob)
-    }
-    recorder.start(250)  // emit chunks for timeslice granularity
-    continuousRecorderRef.current = recorder
+
+    createRecorder()
+
+    // Restart recorder every 5s during passive mode to keep audio
+    // fresh without unbounded chunk growth. Skip restart if capturing.
+    recorderRestartTimer.current = setInterval(() => {
+      if (stateRef.current !== 'passive') return
+      if (!continuousRecorderRef.current || continuousRecorderRef.current.state === 'inactive') return
+      try { continuousRecorderRef.current.stop() } catch {}
+      createRecorder()
+    }, 5000)
   }
 
   /** Return to passive monitoring. */
@@ -298,6 +315,10 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
           console.debug('[voice] media track ended — stopping continuous listening')
           continuousRef.current = false
           stateRef.current = 'passive'
+          if (recorderRestartTimer.current) {
+            clearInterval(recorderRestartTimer.current)
+            recorderRestartTimer.current = null
+          }
           if (continuousRecorderRef.current && continuousRecorderRef.current.state !== 'inactive') {
             try { continuousRecorderRef.current.stop() } catch {}
           }
@@ -528,8 +549,12 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
     }
+    if (recorderRestartTimer.current) {
+      clearInterval(recorderRestartTimer.current)
+      recorderRestartTimer.current = null
+    }
     if (continuousRecorderRef.current && continuousRecorderRef.current.state !== 'inactive') {
-      continuousRecorderRef.current.stop()
+      try { continuousRecorderRef.current.stop() } catch {}
     }
     continuousRecorderRef.current = null
 
