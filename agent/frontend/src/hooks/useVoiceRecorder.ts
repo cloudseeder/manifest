@@ -154,8 +154,9 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
 
   /** Transcribe wake word capture. If wake word found, go attentive. */
   const transcribeWakeCheck = useCallback(async (blob: Blob) => {
-    // Skip empty or tiny blobs (corrupt WebM fragments crash whisper)
-    if (blob.size < 1000) {
+    // Skip empty, tiny, or oversized blobs
+    if (blob.size < 1000 || blob.size > 20 * 1024 * 1024) {
+      console.debug(`[voice] blob rejected: size=${blob.size}`)
       if (continuousRef.current) goPassive()
       return
     }
@@ -244,11 +245,17 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
         : 'audio/webm',
     })
     recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunksRef.current.push(e.data)
+      if (e.data.size > 0) {
+        chunksRef.current.push(e.data)
+        // Cap at ~30 seconds (120 chunks at 250ms). First chunk has the
+        // WebM header so we always keep it; drop from position 1.
+        if (chunksRef.current.length > 120) {
+          chunksRef.current = [chunksRef.current[0], ...chunksRef.current.slice(-80)]
+        }
+      }
     }
     recorder.onstop = async () => {
       const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-      // Wake word capture — check for wake word
       await transcribeWakeCheck(blob)
     }
     recorder.start(250)  // emit chunks for timeslice granularity
@@ -284,6 +291,28 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
+
+      // Handle mic disconnection or browser killing the track
+      stream.getAudioTracks().forEach((track) => {
+        track.onended = () => {
+          console.debug('[voice] media track ended — stopping continuous listening')
+          continuousRef.current = false
+          stateRef.current = 'passive'
+          if (continuousRecorderRef.current && continuousRecorderRef.current.state !== 'inactive') {
+            try { continuousRecorderRef.current.stop() } catch {}
+          }
+          continuousRecorderRef.current = null
+          cancelAnimationFrame(levelRafRef.current)
+          audioLevelRef.current = 0
+          analyserRef.current = null
+          audioCtxRef.current?.close()
+          audioCtxRef.current = null
+          streamRef.current = null
+          setRecording(false)
+          setListening(false)
+          setAttentive(false)
+        }
+      })
 
       const audioCtx = new AudioContext()
       const source = audioCtx.createMediaStreamSource(stream)
