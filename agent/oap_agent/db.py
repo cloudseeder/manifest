@@ -165,6 +165,11 @@ class AgentDB:
             self.conn.execute("ALTER TABLE user_facts ADD COLUMN superseded_at TEXT")
             self.conn.commit()
 
+        fact_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(user_facts)").fetchall()}
+        if "image_path" not in fact_cols:
+            self.conn.execute("ALTER TABLE user_facts ADD COLUMN image_path TEXT")
+            self.conn.commit()
+
         task_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(tasks)").fetchall()}
         if "incremental" not in task_cols:
             self.conn.execute("ALTER TABLE tasks ADD COLUMN incremental INTEGER NOT NULL DEFAULT 1")
@@ -659,7 +664,7 @@ class AgentDB:
             result.append(d)
         return result
 
-    def add_facts(self, facts: list[str], source_message: str, max_facts: int = 500) -> int:
+    def add_facts(self, facts: list[str], source_message: str, max_facts: int = 500, image_path: str | None = None) -> int:
         """Insert new facts with UNIQUE dedup, evict excess unpinned. Returns count added."""
         import sqlite3 as _sqlite3
         now = _now()
@@ -672,8 +677,8 @@ class AgentDB:
                 try:
                     self.conn.execute(
                         "INSERT INTO user_facts (id, fact, source_message, created_at, "
-                        "last_referenced, reference_count, pinned) VALUES (?, ?, ?, ?, ?, 1, 0)",
-                        (_new_id("fact_"), fact, source_message[:500], now, now),
+                        "last_referenced, reference_count, pinned, image_path) VALUES (?, ?, ?, ?, ?, 1, 0, ?)",
+                        (_new_id("fact_"), fact, source_message[:500], now, now, image_path),
                     )
                     added += 1
                 except _sqlite3.IntegrityError:

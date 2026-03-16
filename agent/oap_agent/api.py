@@ -449,10 +449,24 @@ async def chat(req: ChatRequest):
 
     conv_id = conv["id"]
 
-    # Save user message (with image metadata if present)
+    # Save images to disk and user message metadata
+    saved_image_paths: list[str] = []
     msg_metadata = None
     if req.images:
-        msg_metadata = {"images": len(req.images)}
+        import base64
+        from pathlib import Path as _Path
+        images_dir = _Path(_db.conn.execute("PRAGMA database_list").fetchone()[2]).parent / "images"
+        images_dir.mkdir(exist_ok=True)
+        for i, img_b64 in enumerate(req.images[:5]):  # max 5 images
+            try:
+                img_bytes = base64.b64decode(img_b64)
+                filename = f"{conv_id}_{len(_db.get_messages(conv_id))}_{i}.jpg"
+                img_path = images_dir / filename
+                img_path.write_bytes(img_bytes)
+                saved_image_paths.append(str(img_path))
+            except Exception:
+                log.warning("Failed to save image %d", i, exc_info=True)
+        msg_metadata = {"images": len(req.images), "image_paths": saved_image_paths}
     user_msg = _db.add_message(conv_id, role="user", content=req.message, metadata=msg_metadata)
 
     # Build message history for the LLM — keep last N messages to bound
@@ -829,8 +843,12 @@ async def chat(req: ChatRequest):
         )
         if settings.get("memory_enabled") == "true" and result["content"] and _user_is_sharing:
             from .memory import extract_and_store_facts
+            image_path = saved_image_paths[0] if saved_image_paths else None
             asyncio.create_task(
-                extract_and_store_facts(_db, _discovery_url, req.message, result["content"], model=req.model)
+                extract_and_store_facts(
+                    _db, _discovery_url, req.message, result["content"],
+                    model=req.model, image_path=image_path,
+                )
             )
 
         yield _sse_event("assistant_message", {
@@ -1325,6 +1343,23 @@ async def update_memory(fact_id: str, req: UpdateFactRequest):
     asyncio.create_task(embed_missing_facts(_db, _discovery_url))
     facts = _db.get_all_facts()
     return {"facts": facts, "total": len(facts)}
+
+
+@app.get("/v1/agent/images/{filename}")
+async def serve_image(filename: str):
+    """Serve a saved image from the images directory."""
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    from pathlib import Path as _Path
+    images_dir = _Path(_db.conn.execute("PRAGMA database_list").fetchone()[2]).parent / "images"
+    img_path = images_dir / filename
+    # Security: ensure the path doesn't escape the images directory
+    if not img_path.resolve().is_relative_to(images_dir.resolve()):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not img_path.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
+    from starlette.responses import FileResponse
+    return FileResponse(str(img_path), media_type="image/jpeg")
 
 
 class PinFactRequest(BaseModel):

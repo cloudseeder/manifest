@@ -400,6 +400,7 @@ async def extract_and_store_facts(
     model: str = "qwen3:8b",
     timeout: int = 120,
     max_facts: int = 500,
+    image_path: str | None = None,
 ) -> None:
     """Extract user facts from a conversation turn and store them.
 
@@ -478,7 +479,7 @@ async def extract_and_store_facts(
                 model=model, timeout=timeout,
             )
 
-            added = db.add_facts(clean, user_message, max_facts)
+            added = db.add_facts(clean, user_message, max_facts, image_path=image_path)
             if added:
                 log.info("Extracted %d new user fact(s): %s", added, clean)
 
