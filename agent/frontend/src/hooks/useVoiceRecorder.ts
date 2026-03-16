@@ -269,19 +269,9 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
 
     createRecorder()
 
-    // Restart recorder every 8s during passive mode. Each restart
-    // produces a fresh valid WebM. The old recorder's onstop skips
-    // transcription (state is passive, not processing).
-    recorderRestartTimer.current = setInterval(() => {
-      if (stateRef.current !== 'passive') return
-      const old = continuousRecorderRef.current
-      if (!old || old.state === 'inactive') return
-      // Create new recorder FIRST, then stop old one.
-      // Old onstop will fire async but won't interfere since
-      // chunksRef was already reset by createRecorder().
-      createRecorder()
-      try { old.stop() } catch {}
-    }, 8000)
+    // No periodic restart — WebM transitions produce corrupt audio.
+    // Instead, max capture duration is enforced in the capturing state.
+    recorderRestartTimer.current = null
   }
 
   /** Return to passive monitoring. */
@@ -413,12 +403,19 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
               ambientLevelRef.current * 1.3,
             )
 
-            if (rms < silenceThreshold) {
+            // Force-stop if capturing too long (prevents unbounded recording)
+            const captureElapsed = captureStartRef.current ? Date.now() - captureStartRef.current : 0
+            if (captureElapsed > 10000) {
+              stateRef.current = 'processing'
+              if (continuousRecorderRef.current && continuousRecorderRef.current.state !== 'inactive') {
+                continuousRecorderRef.current.stop()
+              }
+              setRecording(false)
+            } else if (rms < silenceThreshold) {
               if (silenceStartRef.current === 0) {
                 silenceStartRef.current = Date.now()
               } else if (Date.now() - silenceStartRef.current > SILENCE_DURATION) {
                 stateRef.current = 'processing'
-                // Stop continuous recorder — onstop will send chunks to transcription
                 if (continuousRecorderRef.current && continuousRecorderRef.current.state !== 'inactive') {
                   continuousRecorderRef.current.stop()
                 }
