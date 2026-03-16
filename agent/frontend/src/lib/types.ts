@@ -28,6 +28,7 @@ export interface AgentTask {
   id: string
   name: string
   prompt: string
+  user_prompt?: string | null
   schedule?: string
   model: string
   enabled: boolean

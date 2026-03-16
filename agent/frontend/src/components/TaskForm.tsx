@@ -10,11 +10,18 @@ interface TaskFormProps {
 
 export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
   const [name, setName] = useState(task?.name || '')
-  const [prompt, setPrompt] = useState(task?.prompt || '')
+  const [prompt, setPrompt] = useState(task?.user_prompt || task?.prompt || '')
   const [schedule, setSchedule] = useState(task?.schedule || '')
   const [models, setModels] = useState<string[]>([])
   const [model, setModel] = useState(task?.model || '')
   const [incremental, setIncremental] = useState(task?.incremental ?? true)
+  const [autoRefine, setAutoRefine] = useState(true)
+
+  // Refinement state
+  const [refining, setRefining] = useState(false)
+  const [refinedPrompt, setRefinedPrompt] = useState<string | null>(null)
+  const [refinedModel, setRefinedModel] = useState<string | null>(null)
+  const [escalationEnabled, setEscalationEnabled] = useState(false)
 
   useEffect(() => {
     fetch('/v1/agent/models')
@@ -26,9 +33,52 @@ export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
         }
       })
       .catch(() => {})
+    // Check if escalation (big LLM) is available
+    fetch('/v1/agent/health')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.escalation_enabled) setEscalationEnabled(true)
+      })
+      .catch(() => {})
   }, [])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  async function handleRefine() {
+    if (!prompt.trim() || refining) return
+    setRefining(true)
+    setRefinedPrompt(null)
+    try {
+      const res = await fetch('/v1/agent/tasks/refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: prompt.trim() }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.refined && data.refined !== prompt.trim()) {
+          setRefinedPrompt(data.refined)
+          setRefinedModel(data.model || null)
+        } else {
+          setRefinedPrompt(null)
+          setError('Prompt is already well-optimized')
+          setTimeout(() => setError(null), 3000)
+        }
+      }
+    } catch {
+      setError('Refinement failed')
+    } finally {
+      setRefining(false)
+    }
+  }
+
+  function acceptRefinement() {
+    if (refinedPrompt) {
+      setPrompt(refinedPrompt)
+      setRefinedPrompt(null)
+      setAutoRefine(false) // already refined manually
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -43,6 +93,7 @@ export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
       schedule: schedule.trim() || undefined,
       model,
       incremental,
+      auto_refine: autoRefine && escalationEnabled,
     }
 
     try {
@@ -67,6 +118,10 @@ export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
     }
   }
 
+  // Show original user prompt if editing a refined task
+  const hasRefinedPrompt = task?.user_prompt && task.user_prompt !== task.prompt
+  const [showOriginal, setShowOriginal] = useState(false)
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
@@ -82,15 +137,73 @@ export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Prompt</label>
+        <div className="flex items-center justify-between mb-1">
+          <label className="block text-sm font-medium text-gray-700">Prompt</label>
+          {escalationEnabled && prompt.trim().length > 5 && (
+            <button
+              type="button"
+              onClick={handleRefine}
+              disabled={refining || saving}
+              className="text-xs text-primary hover:underline disabled:opacity-50"
+            >
+              {refining ? 'Refining...' : 'Refine with AI'}
+            </button>
+          )}
+        </div>
         <textarea
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => { setPrompt(e.target.value); setRefinedPrompt(null) }}
           required
           rows={4}
           placeholder="Describe what this task should do..."
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         />
+
+        {/* Refinement suggestion */}
+        {refinedPrompt && (
+          <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-blue-700">
+                Suggested refinement {refinedModel && <span className="font-normal text-blue-500">via {refinedModel}</span>}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={acceptRefinement}
+                  className="text-xs font-medium text-blue-700 hover:underline"
+                >
+                  Accept
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRefinedPrompt(null)}
+                  className="text-xs text-gray-500 hover:underline"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+            <p className="text-sm text-blue-900 whitespace-pre-wrap">{refinedPrompt}</p>
+          </div>
+        )}
+
+        {/* Show original prompt for refined tasks */}
+        {hasRefinedPrompt && (
+          <div className="mt-1">
+            <button
+              type="button"
+              onClick={() => setShowOriginal(!showOriginal)}
+              className="text-xs text-gray-500 hover:underline"
+            >
+              {showOriginal ? 'Hide' : 'Show'} original prompt
+            </button>
+            {showOriginal && (
+              <p className="mt-1 rounded-md bg-gray-50 p-2 text-xs text-gray-600 whitespace-pre-wrap">
+                {task?.user_prompt}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <div>
@@ -111,17 +224,33 @@ export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
         </select>
       </div>
 
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="incremental"
-          checked={incremental}
-          onChange={(e) => setIncremental(e.target.checked)}
-          className="rounded border-gray-300 text-primary focus:ring-primary"
-        />
-        <label htmlFor="incremental" className="text-sm text-gray-700">
-          Incremental — only include new information since last run
-        </label>
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="incremental"
+            checked={incremental}
+            onChange={(e) => setIncremental(e.target.checked)}
+            className="rounded border-gray-300 text-primary focus:ring-primary"
+          />
+          <label htmlFor="incremental" className="text-sm text-gray-700">
+            Incremental — only include new information since last run
+          </label>
+        </div>
+        {escalationEnabled && (
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="auto-refine"
+              checked={autoRefine}
+              onChange={(e) => setAutoRefine(e.target.checked)}
+              className="rounded border-gray-300 text-primary focus:ring-primary"
+            />
+            <label htmlFor="auto-refine" className="text-sm text-gray-700">
+              Auto-refine prompt on save
+            </label>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -144,7 +273,7 @@ export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
           disabled={saving || !name.trim() || !prompt.trim()}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:opacity-50"
         >
-          {saving ? 'Saving...' : task ? 'Save Changes' : 'Create Task'}
+          {saving ? (autoRefine && escalationEnabled ? 'Refining & Saving...' : 'Saving...') : task ? 'Save Changes' : 'Create Task'}
         </button>
       </div>
     </form>

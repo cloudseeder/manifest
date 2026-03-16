@@ -204,12 +204,17 @@ class UpdateConversationRequest(BaseModel):
         return _validate_model(v)
 
 
+class RefinePromptRequest(BaseModel):
+    prompt: str = Field(..., max_length=32_000)
+
+
 class CreateTaskRequest(BaseModel):
     name: str = Field(..., max_length=200)
     prompt: str = Field(..., max_length=32_000)
     schedule: str | None = Field(None, max_length=100)
     model: str | None = Field(None, max_length=100)
     incremental: bool = True
+    auto_refine: bool = False
 
     @field_validator("model")
     @classmethod
@@ -252,6 +257,7 @@ class UpdateTaskRequest(BaseModel):
     model: str | None = Field(None, max_length=100)
     enabled: bool | None = None
     incremental: bool | None = None
+    auto_refine: bool = False
 
     @field_validator("model")
     @classmethod
@@ -832,6 +838,51 @@ async def update_conversation(conv_id: str, req: UpdateConversationRequest):
 # Task routes
 # ---------------------------------------------------------------------------
 
+_REFINE_SYSTEM = (
+    "You are a prompt optimizer. Rewrite the user's task description so a small LLM "
+    "(qwen3:8b) can execute it reliably via tool calls.\n\n"
+    "Available tools: weather lookup (open-meteo), news (NewsAPI), reminders "
+    "(create/list/due/complete with place-based triggers), email scanning, "
+    "stock quotes (Alpha Vantage), Wikipedia, and a shell executor (oap_exec).\n\n"
+    "Rules:\n"
+    "- Be specific about what data to fetch and how to format the response\n"
+    "- Request natural language output: 1-2 sentence summaries, bullet lists — never tables\n"
+    "- If the task involves checking for new items, say 'only report items since the last check'\n"
+    "- Keep the refined prompt under 200 words\n"
+    "- Do not add capabilities the tools don't have\n"
+    "- Preserve the user's intent exactly\n\n"
+    "Return ONLY the refined prompt text, no explanation or preamble."
+)
+
+
+async def _refine_prompt(prompt: str) -> str | None:
+    """Refine a task prompt via the big LLM. Returns refined text or None on failure."""
+    if not _escalation_cfg or not _escalation_cfg.enabled:
+        return None
+    from .executor import execute_escalated
+    messages = [
+        {"role": "system", "content": _REFINE_SYSTEM},
+        {"role": "user", "content": prompt},
+    ]
+    try:
+        result = await execute_escalated(messages, _escalation_cfg)
+        if result and result.get("content", "").strip():
+            return result["content"].strip()
+    except Exception:
+        log.warning("Prompt refinement failed", exc_info=True)
+    return None
+
+
+@app.post("/v1/agent/tasks/refine")
+async def refine_task_prompt(req: RefinePromptRequest):
+    refined = await _refine_prompt(req.prompt)
+    return {
+        "original": req.prompt,
+        "refined": refined or req.prompt,
+        "model": _escalation_cfg.model if _escalation_cfg and refined else "none",
+    }
+
+
 @app.get("/v1/agent/tasks")
 async def list_tasks():
     if _db is None:
@@ -846,12 +897,20 @@ async def create_task(req: CreateTaskRequest):
     if len(_db.list_tasks()) >= _max_tasks:
         raise HTTPException(status_code=429, detail="Maximum task limit reached")
     model = req.model or _discovery_model
+    prompt = req.prompt
+    user_prompt = None
+    if req.auto_refine:
+        refined = await _refine_prompt(req.prompt)
+        if refined and refined != req.prompt:
+            user_prompt = req.prompt
+            prompt = refined
     task = _db.create_task(
         name=req.name,
-        prompt=req.prompt,
+        prompt=prompt,
         schedule=req.schedule,
         model=model,
         incremental=req.incremental,
+        user_prompt=user_prompt,
     )
     if _scheduler and task.get("schedule"):
         _scheduler.schedule_task(task)
@@ -877,14 +936,22 @@ async def update_task(task_id: str, req: UpdateTaskRequest):
     task = _db.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    prompt = req.prompt
+    user_prompt = ...  # sentinel: don't update
+    if req.auto_refine and req.prompt:
+        refined = await _refine_prompt(req.prompt)
+        if refined and refined != req.prompt:
+            user_prompt = req.prompt
+            prompt = refined
     updated = _db.update_task(
         task_id,
         name=req.name,
-        prompt=req.prompt,
+        prompt=prompt,
         schedule=req.schedule,
         model=req.model,
         enabled=req.enabled,
         incremental=req.incremental,
+        user_prompt=user_prompt,
     )
     if _scheduler:
         if updated.get("enabled") and updated.get("schedule"):
@@ -1056,7 +1123,12 @@ async def health():
         return {"status": "starting"}
     conversations = _db.list_conversations()["total"]
     tasks = len(_db.list_tasks())
-    return {"status": "ok", "conversations": conversations, "tasks": tasks}
+    return {
+        "status": "ok",
+        "conversations": conversations,
+        "tasks": tasks,
+        "escalation_enabled": bool(_escalation_cfg and _escalation_cfg.enabled),
+    }
 
 
 # ---------------------------------------------------------------------------

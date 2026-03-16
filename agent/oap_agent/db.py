@@ -169,6 +169,9 @@ class AgentDB:
         if "incremental" not in task_cols:
             self.conn.execute("ALTER TABLE tasks ADD COLUMN incremental INTEGER NOT NULL DEFAULT 1")
             self.conn.commit()
+        if "user_prompt" not in task_cols:
+            self.conn.execute("ALTER TABLE tasks ADD COLUMN user_prompt TEXT")
+            self.conn.commit()
 
     def _seed_defaults(self):
         """Insert default settings, adding any missing keys to existing databases."""
@@ -334,14 +337,15 @@ class AgentDB:
         schedule: str | None = None,
         model: str = "qwen3:14b",
         incremental: bool = True,
+        user_prompt: str | None = None,
     ) -> dict:
         task_id = _new_id("task_")
         now = _now()
         with self._lock:
             self.conn.execute(
-                """INSERT INTO tasks (id, name, prompt, schedule, model, enabled, incremental, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)""",
-                (task_id, name, prompt, schedule, model, int(incremental), now, now),
+                """INSERT INTO tasks (id, name, prompt, schedule, model, enabled, incremental, user_prompt, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)""",
+                (task_id, name, prompt, schedule, model, int(incremental), user_prompt, now, now),
             )
             self.conn.commit()
         return self.get_task(task_id)
@@ -388,6 +392,7 @@ class AgentDB:
         model: str | None = None,
         enabled: bool | None = None,
         incremental: bool | None = None,
+        user_prompt: str | None = ...,
     ) -> dict | None:
         now = _now()
         # Build explicit SET clause from provided fields
@@ -411,6 +416,9 @@ class AgentDB:
         if incremental is not None:
             fields.append("incremental = ?")
             values.append(1 if incremental else 0)
+        if user_prompt is not ...:
+            fields.append("user_prompt = ?")
+            values.append(user_prompt)
         if not fields:
             return self.get_task(task_id)
         fields.append("updated_at = ?")
