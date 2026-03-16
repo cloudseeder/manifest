@@ -122,7 +122,7 @@ class TaskScheduler:
         return prompt
 
     _NO_NEWS_RE = re.compile(
-        r"(no\s+new\s+(email|message|notification|update|result|item)|"
+        r"(no\s+new\s+\w*\s*(email|message|notification|update|result|item)|"
         r"no\s+emails?\s+(from|found|were|in|received)|"
         r"nothing\s+new|no\s+updates?|no\s+results?\s+found|"
         r"all\s+caught\s+up|no\s+changes?|"
