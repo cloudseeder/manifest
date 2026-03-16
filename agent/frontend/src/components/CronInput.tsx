@@ -2,13 +2,15 @@ import { useState, useEffect, useCallback } from 'react'
 
 // ── Types ──────────────────────────────────────────────────────────────
 
-type Frequency = 'none' | 'minutes' | 'hourly' | 'daily' | 'weekly' | 'monthly'
+type Frequency = 'none' | 'minutes' | 'hourly' | 'hourly_range' | 'daily' | 'weekly' | 'monthly'
 
 interface BuilderState {
   frequency: Frequency
   minuteInterval: number   // 5 | 10 | 15 | 30
   minute: number           // 0-59
   hour: number             // 0-23
+  hourStart: number        // 0-23 (for hourly_range)
+  hourEnd: number          // 0-23 (for hourly_range)
   daysOfWeek: number[]     // 0=Sun, 1=Mon ... 6=Sat
   dayOfMonth: number       // 1-28
 }
@@ -26,6 +28,8 @@ const DEFAULT_STATE: BuilderState = {
   minuteInterval: 15,
   minute: 0,
   hour: 9,
+  hourStart: 6,
+  hourEnd: 18,
   daysOfWeek: [1, 2, 3, 4, 5],
   dayOfMonth: 1,
 }
@@ -55,6 +59,8 @@ function stateToCron(s: BuilderState): string {
       return `*/${s.minuteInterval} * * * *`
     case 'hourly':
       return `${s.minute} * * * *`
+    case 'hourly_range':
+      return `${s.minute} ${s.hourStart}-${s.hourEnd} * * *`
     case 'daily':
       return `${s.minute} ${s.hour} * * *`
     case 'weekly': {
@@ -92,6 +98,16 @@ function parseCron(expr: string): BuilderState | null {
   // N * * * * → hourly at :N
   if (hourPart === '*' && domPart === '*' && monPart === '*' && dowPart === '*') {
     return { ...DEFAULT_STATE, frequency: 'hourly', minute: min }
+  }
+
+  // N start-end * * * → hourly during range
+  const rangeMatch = hourPart.match(/^(\d+)-(\d+)$/)
+  if (rangeMatch && domPart === '*' && monPart === '*' && dowPart === '*') {
+    const start = parseInt(rangeMatch[1])
+    const end = parseInt(rangeMatch[2])
+    if (start >= 0 && start <= 23 && end >= 0 && end <= 23) {
+      return { ...DEFAULT_STATE, frequency: 'hourly_range', minute: min, hourStart: start, hourEnd: end }
+    }
   }
 
   const hour = parseInt(hourPart)
@@ -203,6 +219,8 @@ function describeCron(expr: string): string {
       return `Every ${state.minuteInterval} minutes`
     case 'hourly':
       return `Hourly at :${state.minute.toString().padStart(2, '0')}`
+    case 'hourly_range':
+      return `Hourly at :${state.minute.toString().padStart(2, '0')} from ${formatTime(state.hourStart, 0).replace(':00 ', ' ')} to ${formatTime(state.hourEnd, 0).replace(':00 ', ' ')}`
     case 'daily':
       return `Daily at ${formatTime(state.hour, state.minute)}`
     case 'weekly': {
@@ -349,6 +367,7 @@ export default function CronInput({ value, onChange, disabled }: CronInputProps)
     { value: 'none', label: 'No schedule' },
     { value: 'minutes', label: 'Every X minutes' },
     { value: 'hourly', label: 'Hourly' },
+    { value: 'hourly_range', label: 'Hourly (time range)' },
     { value: 'daily', label: 'Daily' },
     { value: 'weekly', label: 'Weekly' },
     { value: 'monthly', label: 'Monthly' },
@@ -399,6 +418,32 @@ export default function CronInput({ value, onChange, disabled }: CronInputProps)
               value={state.minute}
               onChange={(v) => updateField('minute', parseInt(v))}
               options={hourlyMinuteOptions}
+              disabled={disabled}
+            />
+          </>
+        )}
+
+        {state.frequency === 'hourly_range' && (
+          <>
+            <span className="text-sm text-gray-500">at</span>
+            <Select
+              value={state.minute}
+              onChange={(v) => updateField('minute', parseInt(v))}
+              options={hourlyMinuteOptions}
+              disabled={disabled}
+            />
+            <span className="text-sm text-gray-500">from</span>
+            <Select
+              value={state.hourStart}
+              onChange={(v) => updateField('hourStart', parseInt(v))}
+              options={hourOptions}
+              disabled={disabled}
+            />
+            <span className="text-sm text-gray-500">to</span>
+            <Select
+              value={state.hourEnd}
+              onChange={(v) => updateField('hourEnd', parseInt(v))}
+              options={hourOptions}
               disabled={disabled}
             />
           </>
