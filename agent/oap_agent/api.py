@@ -324,25 +324,30 @@ def _is_conversational(message: str) -> bool:
     if _recall_patterns.match(stripped):
         return True
     _task_starts = re.compile(
-        r"^(check|find|search|look\s+up|get|fetch|set|create|delete|remove|update|mark|complete"
+        r"^(check|find|search|look\s+up|get|fetch|set|create|delete|remove|update|mark|complete|display"
+        r"|pull\s+up|give\s+me|bring\s+up|open|read|scan|summarize|review|analyze"
         r"|send|tell|show|list|remind|schedule|run|execute|can\s+you|could\s+you"
-        r"|please|would\s+you|i\s+need\s+you\s+to|i\s+want\s+you\s+to"
-        r"|what|when|where|who|how|why|which|is\s+there|are\s+there|do\s+you)",
+        r"|please|would\s+you|i\s+need\s+you\s+to|i\s+want\s+you\s+to|i\s+need"
+        r"|what|when|where|who|how|why|which|is\s+there|are\s+there|do\s+you"
+        r"|any\b|are\s+my|do\s+i|have\s+i)",
         re.IGNORECASE,
     )
     if _task_starts.match(stripped):
         return False
-    # Check for task verbs anywhere in the message — catches cases like
-    # "Our anniversary is June 12, please add a reminder"
+    # Check for task-related nouns/verbs anywhere in the message
     _task_anywhere = re.compile(
-        r"\b(remind|reminder|schedule|set\s+a|add\s+a|create\s+a|delete|remove|mark\s+(as\s+)?(done|complete)"
-        r"|complete\s+(the|my|a)|can\s+you|could\s+you|please\s+(add|set|create|check|find|get|send|remind|mark|complete))\b",
+        r"\b(remind|reminder|email|weather|news|stock|task|schedule"
+        r"|set\s+a|add\s+a|create\s+a|delete|remove|mark\s+(as\s+)?(done|complete)"
+        r"|complete\s+(the|my|a)|can\s+you|could\s+you"
+        r"|please\s+(add|set|create|check|find|get|send|remind|mark|complete))\b",
         re.IGNORECASE,
     )
     if _task_anywhere.search(stripped):
         return False
-    # If it doesn't look like a task, treat longer personal statements
-    # as conversational (e.g. "Amy likes to travel, she just got back from Ireland")
+    # If it doesn't match any task pattern, treat as conversational
+    # (e.g. "Amy likes to travel, she just got back from Ireland")
+    # This is intentional — conversational routing enables big LLM
+    # escalation when Ollama is busy with background tasks.
     if len(stripped) > 20:
         return True
     return False
