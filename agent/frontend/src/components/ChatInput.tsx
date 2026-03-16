@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, type MutableRefObject } from 'react'
 
 interface ChatInputProps {
-  onSend: (message: string, model: string) => void
+  onSend: (message: string, model: string, images?: string[]) => void
   disabled?: boolean
   defaultModel?: string
   models?: string[]
@@ -43,7 +43,9 @@ export default function ChatInput({
 }: ChatInputProps) {
   const [value, setValue] = useState('')
   const [model, setModel] = useState(defaultModel)
+  const [images, setImages] = useState<string[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Sync model when defaultModel changes (e.g. after models fetch)
   useEffect(() => {
@@ -75,6 +77,40 @@ export default function ChatInput({
     }
   }, [onTranscriptionRef])
 
+  function addImageFromFile(file: File) {
+    if (!file.type.startsWith('image/')) return
+    if (file.size > 10 * 1024 * 1024) return // 10MB max
+    const reader = new FileReader()
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(',')[1] // strip data:image/...;base64,
+      if (base64) setImages((prev) => [...prev, base64])
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function handlePaste(e: React.ClipboardEvent) {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (file) addImageFromFile(file)
+        return
+      }
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    const files = e.dataTransfer?.files
+    if (files) {
+      for (const file of files) {
+        addImageFromFile(file)
+      }
+    }
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -85,8 +121,9 @@ export default function ChatInput({
   function handleSend() {
     const trimmed = value.trim()
     if (!trimmed || disabled) return
-    onSend(trimmed, model)
+    onSend(trimmed, model, images.length > 0 ? images : undefined)
     setValue('')
+    setImages([])
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
@@ -106,13 +143,38 @@ export default function ChatInput({
   return (
     <div className="border-t border-gray-200 bg-white px-4 py-3">
       <div className="mx-auto max-w-3xl">
-        <div className="flex items-end gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary">
+        {/* Image preview strip */}
+        {images.length > 0 && (
+          <div className="mb-2 flex gap-2 flex-wrap">
+            {images.map((img, i) => (
+              <div key={i} className="relative group">
+                <img
+                  src={`data:image/jpeg;base64,${img}`}
+                  alt="Attached"
+                  className="h-16 w-16 rounded-lg object-cover border border-gray-200"
+                />
+                <button
+                  onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+                  className="absolute -top-1 -right-1 hidden group-hover:flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-xs"
+                >
+                  x
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div
+          className="flex items-end gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary"
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+        >
           <textarea
             ref={textareaRef}
             value={value}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder={transcribing ? 'Transcribing...' : attentive ? 'Listening — go ahead...' : recording ? 'Listening...' : listening ? `Say '${wakeWord}' to start...` : 'Send a message...'}
+            onPaste={handlePaste}
+            placeholder={transcribing ? 'Transcribing...' : attentive ? 'Listening — go ahead...' : recording ? 'Listening...' : listening ? `Say '${wakeWord}' to start...` : 'Send a message (paste image)...'}
             rows={1}
             disabled={disabled || transcribing}
             className="flex-1 resize-none bg-transparent text-sm text-gray-900 placeholder-gray-400 focus:outline-none disabled:opacity-50"
@@ -129,6 +191,27 @@ export default function ChatInput({
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) addImageFromFile(file)
+                e.target.value = ''
+              }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled}
+              title="Attach image"
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </button>
             {showMic && (
               <button
                 onClick={onMicClick}

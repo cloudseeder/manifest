@@ -74,6 +74,7 @@ class ChatMessage(BaseModel):
     role: str
     content: str = ""
     tool_calls: list[dict[str, Any]] | None = None
+    images: list[str] | None = None  # base64-encoded images for vision models
 
 
 class ChatRequest(BaseModel):

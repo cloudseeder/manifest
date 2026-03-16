@@ -177,6 +177,7 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = Field(None, max_length=64)
     message: str = Field(..., max_length=32_000)
     model: str | None = Field(None, max_length=100)
+    images: list[str] | None = None  # base64-encoded images for vision
 
     @field_validator("model")
     @classmethod
@@ -448,8 +449,11 @@ async def chat(req: ChatRequest):
 
     conv_id = conv["id"]
 
-    # Save user message
-    user_msg = _db.add_message(conv_id, role="user", content=req.message)
+    # Save user message (with image metadata if present)
+    msg_metadata = None
+    if req.images:
+        msg_metadata = {"images": len(req.images)}
+    user_msg = _db.add_message(conv_id, role="user", content=req.message, metadata=msg_metadata)
 
     # Build message history for the LLM — keep last N messages to bound
     # latency as conversations grow (user facts carry long-term memory).
@@ -462,6 +466,13 @@ async def chat(req: ChatRequest):
     ]
     if len(llm_messages) > _MAX_HISTORY_MESSAGES:
         llm_messages = llm_messages[-_MAX_HISTORY_MESSAGES:]
+
+    # Attach images to the last user message for vision models
+    if req.images and llm_messages:
+        for i in range(len(llm_messages) - 1, -1, -1):
+            if llm_messages[i]["role"] == "user":
+                llm_messages[i]["images"] = req.images
+                break
 
     # Prepend persona + user facts as a system message
     settings = _db.get_settings()

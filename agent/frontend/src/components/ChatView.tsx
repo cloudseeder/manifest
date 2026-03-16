@@ -184,7 +184,7 @@ export default function ChatView() {
     }
   }
 
-  const handleSend = useCallback(async (message: string, model: string) => {
+  const handleSend = useCallback(async (message: string, model: string, images?: string[]) => {
     if (streaming) return
 
     // Unlock browser autoplay during this user gesture so auto-speak works
@@ -242,7 +242,7 @@ export default function ChatView() {
       const res = await fetch('/v1/agent/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversation_id: convId, message, model }),
+        body: JSON.stringify({ conversation_id: convId, message, model, images: images || undefined }),
         signal: abortRef.current.signal,
       })
 
