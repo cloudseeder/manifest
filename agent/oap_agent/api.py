@@ -324,7 +324,7 @@ def _is_conversational(message: str) -> bool:
     if _recall_patterns.match(stripped):
         return True
     _task_starts = re.compile(
-        r"^(check|find|search|look\s+up|get|fetch|set|create|delete|remove|update"
+        r"^(check|find|search|look\s+up|get|fetch|set|create|delete|remove|update|mark|complete"
         r"|send|tell|show|list|remind|schedule|run|execute|can\s+you|could\s+you"
         r"|please|would\s+you|i\s+need\s+you\s+to|i\s+want\s+you\s+to"
         r"|what|when|where|who|how|why|which|is\s+there|are\s+there|do\s+you)",
@@ -335,8 +335,8 @@ def _is_conversational(message: str) -> bool:
     # Check for task verbs anywhere in the message — catches cases like
     # "Our anniversary is June 12, please add a reminder"
     _task_anywhere = re.compile(
-        r"\b(remind|reminder|schedule|set\s+a|add\s+a|create\s+a|delete|remove"
-        r"|can\s+you|could\s+you|please\s+(add|set|create|check|find|get|send|remind))\b",
+        r"\b(remind|reminder|schedule|set\s+a|add\s+a|create\s+a|delete|remove|mark\s+(as\s+)?(done|complete)"
+        r"|complete\s+(the|my|a)|can\s+you|could\s+you|please\s+(add|set|create|check|find|get|send|remind|mark|complete))\b",
         re.IGNORECASE,
     )
     if _task_anywhere.search(stripped):
