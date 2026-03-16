@@ -297,59 +297,87 @@ _CONVERSATIONAL_PATTERNS = re.compile(
 )
 
 
-def _is_conversational(message: str) -> bool:
-    """Return True if message is a conversational turn that needs no tools.
+def _is_conversational_fast(message: str) -> bool | None:
+    """Fast regex check for obviously conversational or obviously task messages.
 
-    Two categories:
-    1. Short pattern-based: "thanks", "ok", greetings, etc.
-    2. Personal declarative statements: sharing info, not requesting a task.
-       These are statements that don't contain questions or imperatives, and
-       don't reference actions the agent should perform (check, find, set, etc.)
+    Returns True (conversational), False (task), or None (ambiguous — needs LLM).
     """
     stripped = message.strip()
-    # Short conversational patterns
+    # Short conversational patterns — greetings, thanks, acknowledgments
     if len(stripped) <= 100 and _CONVERSATIONAL_PATTERNS.match(stripped):
         return True
-    # Personal declarative statements — sharing info, not requesting tasks.
-    # Skip if it looks like a task: contains question marks, or starts with
-    # imperative verbs / task-oriented keywords.
-    if "?" in stripped:
-        return False
-    # "tell me about X" and "what do you know about X" are recall questions
-    # that should be answered from memory, not routed to tools.
+    # "tell me about X" — recall from memory, no tools needed
     _recall_patterns = re.compile(
         r"^(tell\s+me\s+about|what\s+do\s+you\s+know\s+about|what\s+do\s+you\s+remember)\b",
         re.IGNORECASE,
     )
     if _recall_patterns.match(stripped):
         return True
-    _task_starts = re.compile(
-        r"^(check|find|search|look\s+up|get|fetch|set|create|delete|remove|update|mark|complete|display"
-        r"|pull\s+up|give\s+me|bring\s+up|open|read|scan|summarize|review|analyze"
-        r"|send|tell|show|list|remind|schedule|run|execute|can\s+you|could\s+you"
-        r"|please|would\s+you|i\s+need\s+you\s+to|i\s+want\s+you\s+to|i\s+need"
-        r"|what|when|where|who|how|why|which|is\s+there|are\s+there|do\s+you"
-        r"|any\b|are\s+my|do\s+i|have\s+i)",
+    # Questions are almost always tasks
+    if "?" in stripped:
+        return False
+    # Task-related nouns anywhere → definitely needs tools
+    _task_nouns = re.compile(
+        r"\b(remind|reminder|email|weather|news|stock|task|schedule|calendar)\b",
         re.IGNORECASE,
     )
-    if _task_starts.match(stripped):
+    if _task_nouns.search(stripped):
         return False
-    # Check for task-related nouns/verbs anywhere in the message
-    _task_anywhere = re.compile(
-        r"\b(remind|reminder|email|weather|news|stock|task|schedule"
-        r"|set\s+a|add\s+a|create\s+a|delete|remove|mark\s+(as\s+)?(done|complete)"
-        r"|complete\s+(the|my|a)|can\s+you|could\s+you"
-        r"|please\s+(add|set|create|check|find|get|send|remind|mark|complete))\b",
-        re.IGNORECASE,
-    )
-    if _task_anywhere.search(stripped):
-        return False
-    # If it doesn't match any task pattern, treat as conversational
-    # (e.g. "Amy likes to travel, she just got back from Ireland")
-    # This is intentional — conversational routing enables big LLM
-    # escalation when Ollama is busy with background tasks.
-    if len(stripped) > 20:
-        return True
+    # Ambiguous — let the big LLM decide
+    return None
+
+
+_CLASSIFY_SYSTEM = (
+    "Classify the user's message as either 'tools' or 'conversational'.\n\n"
+    "'tools' — the user wants to DO something: check reminders, look up weather, "
+    "search email, complete a task, get information from an external source, "
+    "run a command, or any action requiring data lookup or modification.\n\n"
+    "'conversational' — the user is chatting, sharing personal info, making small "
+    "talk, saying thanks, or having a casual conversation that needs no external "
+    "data or actions.\n\n"
+    "Return ONLY the word 'tools' or 'conversational', nothing else."
+)
+
+
+async def _classify_intent(message: str) -> bool:
+    """Use the big LLM to classify intent. Returns True if conversational.
+
+    Falls back to False (tools) on any failure — better to route to
+    tools unnecessarily than to miss a task request.
+    """
+    if not _escalation_cfg or not _escalation_cfg.enabled:
+        # No big LLM available — fall back to regex heuristics
+        return _is_conversational_fast(message) or False
+
+    try:
+        result = await execute_escalated(
+            [
+                {"role": "system", "content": _CLASSIFY_SYSTEM},
+                {"role": "user", "content": message},
+            ],
+            _escalation_cfg,
+        )
+        if result and result.get("content"):
+            classification = result["content"].strip().lower()
+            is_conv = "conversational" in classification
+            log.info("Intent classification: %r → %s", message[:80], classification)
+            return is_conv
+    except Exception:
+        log.warning("Intent classification failed — defaulting to tools", exc_info=True)
+    return False
+
+
+def _is_conversational(message: str) -> bool:
+    """Sync wrapper — only handles the fast regex path.
+
+    For the async big-LLM classification, callers use _classify_intent() directly.
+    This remains for backward compatibility and the greeting/notification check.
+    """
+    result = _is_conversational_fast(message)
+    if result is not None:
+        return result
+    # Can't call async from here — default to False (tools).
+    # The async path in stream_response() uses _classify_intent() instead.
     return False
 
 
@@ -637,8 +665,18 @@ async def chat(req: ChatRequest):
                 yield _sse_event("done", {"conversation_id": conv_id})
                 return
 
-        # Route: conversational turns skip the tool bridge entirely
-        conversational = _is_conversational(req.message) or greeting or notif_query
+        # Route: conversational turns skip the tool bridge entirely.
+        # Fast path handles obvious cases (greetings, thanks, task nouns).
+        # Ambiguous messages go to the big LLM for classification.
+        fast_result = _is_conversational_fast(req.message)
+        if fast_result is not None:
+            conversational = fast_result
+        elif greeting or notif_query:
+            conversational = True
+        else:
+            conversational = await _classify_intent(req.message)
+            if conversational:
+                log.info("Big LLM classified as conversational: %r", req.message[:80])
 
         # Check if Ollama is busy with a background task
         ollama_busy = _scheduler is not None and _scheduler.is_active()
