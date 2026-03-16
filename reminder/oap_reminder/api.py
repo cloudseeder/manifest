@@ -162,7 +162,10 @@ async def dispatch(body: dict):
         )
         return {"reminders": reminders, "total": total}
     elif action in ("due", "due_today", "overdue", "upcoming", "today"):
-        reminders = _db.list_due(before=body.get("before") or body.get("due_date"))
+        reminders = _db.list_due(
+            before=body.get("before") or body.get("due_date"),
+            after=body.get("after"),
+        )
         return {"reminders": reminders, "total": len(reminders)}
     elif action in ("complete", "done", "finish"):
         rid = body.get("id") or body.get("reminder_id")
@@ -268,10 +271,10 @@ async def list_reminders(
 
 
 @app.get("/reminders/due")
-async def list_due(before: str | None = Query(None)):
+async def list_due(before: str | None = Query(None), after: str | None = Query(None)):
     if _db is None:
         raise HTTPException(status_code=503, detail="Service unavailable")
-    reminders = _db.list_due(before=before)
+    reminders = _db.list_due(before=before, after=after)
     return {"reminders": reminders, "total": len(reminders)}
 
 

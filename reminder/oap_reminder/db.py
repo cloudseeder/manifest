@@ -188,18 +188,29 @@ class ReminderDB:
         ).fetchall()
         return [dict(r) for r in rows], total
 
-    def list_due(self, before: str | None = None) -> list[dict]:
-        """List pending reminders due on or before a date (default: today).
+    def list_due(self, before: str | None = None, after: str | None = None) -> list[dict]:
+        """List pending reminders due within a date range.
+
+        - before only (default: today): due on or before that date
+        - after + before: due between after and before (inclusive)
+        - after only: due on or after that date
 
         Excludes place-only reminders (place set, no due_date) since those
         surface via list_by_place() when the user says they're going somewhere.
         """
-        before = before or _today()
+        clauses = ["status = 'pending'", "due_date IS NOT NULL"]
+        params: list[str] = []
+        if after:
+            clauses.append("due_date >= ?")
+            params.append(after)
+        if before or not after:
+            clauses.append("due_date <= ?")
+            params.append(before or _today())
         rows = self.conn.execute(
-            """SELECT * FROM reminders
-               WHERE status = 'pending' AND due_date IS NOT NULL AND due_date <= ?
-               ORDER BY due_date ASC, due_time ASC""",
-            (before,),
+            f"""SELECT * FROM reminders
+                WHERE {' AND '.join(clauses)}
+                ORDER BY due_date ASC, due_time ASC""",
+            params,
         ).fetchall()
         return [dict(r) for r in rows]
 
