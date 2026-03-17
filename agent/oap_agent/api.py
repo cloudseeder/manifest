@@ -309,12 +309,13 @@ def _is_conversational_fast(message: str) -> bool | None:
     # Short conversational patterns — greetings, thanks, acknowledgments
     if len(stripped) <= 100 and _CONVERSATIONAL_PATTERNS.match(stripped):
         return True
-    # "tell me about X" — recall from memory, no tools needed
-    _recall_patterns = re.compile(
-        r"^(tell\s+me\s+about|what\s+do\s+you\s+know\s+about|what\s+do\s+you\s+remember)\b",
+    # Memory patterns — "remember X", "tell me about X" — no tools needed.
+    # "Remember" means save to memory, not set a reminder.
+    _memory_patterns = re.compile(
+        r"^(remember\b|tell\s+me\s+about|what\s+do\s+you\s+know\s+about|what\s+do\s+you\s+remember)\b",
         re.IGNORECASE,
     )
-    if _recall_patterns.match(stripped):
+    if _memory_patterns.match(stripped):
         return True
     # Questions are almost always tasks
     if "?" in stripped:
