@@ -656,6 +656,49 @@ async def chat(req: ChatRequest):
                         "![description](/v1/agent/images/filename.jpg). The image URLs "
                         "are shown in brackets next to the fact."
                     )
+                # Retrieve relevant episodes via weighted scoring
+                if use_rag and query_vec is not None:
+                    from datetime import datetime as _dt, timezone as _tz
+                    episodes = _db.search_episodes(query_vec, top_k=5, min_similarity=0.40)
+                    if episodes:
+                        now_ts = _dt.now(_tz.utc)
+                        def _ep_score(ep):
+                            sim = ep.get("similarity", 0)
+                            strength = min(ep.get("reference_count", 1) / 10.0, 1.0)
+                            intensity = ep.get("emotional_intensity", 0)
+                            try:
+                                last_ref = _dt.fromisoformat(ep.get("last_referenced", ep.get("created_at", "")))
+                                if last_ref.tzinfo is None:
+                                    last_ref = last_ref.replace(tzinfo=_tz.utc)
+                                days_ago = (now_ts - last_ref).total_seconds() / 86400
+                            except (ValueError, TypeError):
+                                days_ago = 30
+                            recency = max(0, 1.0 - days_ago / 90.0)
+                            return sim * 0.4 + strength * 0.3 + intensity * 0.2 + recency * 0.1
+                        episodes.sort(key=_ep_score, reverse=True)
+                        episodes = episodes[:3]  # top 3 for prompt space
+                        _db.touch_episodes([e["id"] for e in episodes])
+                        ep_lines = []
+                        for ep in episodes:
+                            line = f"  {ep['description']}"
+                            people = ep.get("people", [])
+                            if people:
+                                line += f" (involving {', '.join(people)})"
+                            valence = ep.get("emotional_valence", 0)
+                            if valence > 0.3:
+                                line += " [positive memory]"
+                            elif valence < -0.3:
+                                line += " [difficult memory]"
+                            if ep.get("image_path"):
+                                import os as _os
+                                fn = _os.path.basename(ep["image_path"])
+                                line += f" [image: /v1/agent/images/{fn}]"
+                            ep_lines.append(line)
+                        memory_parts.append(
+                            "Shared experiences and memories:\n" + "\n\n".join(ep_lines)
+                        )
+                        log.info("Episodes injected: %d", len(episodes))
+
                 persona_parts.append(preamble + "\n\n" + "\n".join(memory_parts))
 
     if persona_parts:
@@ -950,12 +993,19 @@ async def chat(req: ChatRequest):
             and not re.match(r"^(tell|show|what|list|describe)\b", req.message.strip(), re.IGNORECASE)
         )
         if settings.get("memory_enabled") == "true" and result["content"] and _user_is_sharing:
-            from .memory import extract_and_store_facts
+            from .memory import extract_and_store_facts, extract_and_store_episode
             image_path = saved_image_paths[0] if saved_image_paths else None
             asyncio.create_task(
                 extract_and_store_facts(
                     _db, _discovery_url, req.message, result["content"],
                     model=req.model, image_path=image_path, max_facts=_max_facts,
+                )
+            )
+            asyncio.create_task(
+                extract_and_store_episode(
+                    _db, _discovery_url, req.message, result["content"],
+                    model=req.model, image_path=image_path,
+                    conversation_id=conv_id, message_id=assistant_msg["id"],
                 )
             )
 
@@ -1424,6 +1474,23 @@ async def list_memory():
         raise HTTPException(status_code=503, detail="Service unavailable")
     facts = _db.get_all_facts()
     return {"facts": facts, "total": len(facts)}
+
+
+@app.get("/v1/agent/episodes")
+async def list_episodes():
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    episodes = _db.get_all_episodes()
+    return {"episodes": episodes, "total": len(episodes)}
+
+
+@app.delete("/v1/agent/episodes/{episode_id}")
+async def delete_episode(episode_id: str):
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    if not _db.delete_episode(episode_id):
+        raise HTTPException(status_code=404, detail="Episode not found")
+    return {"deleted": episode_id}
 
 
 @app.post("/v1/agent/memory", status_code=201)

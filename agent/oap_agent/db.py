@@ -74,6 +74,24 @@ CREATE TABLE IF NOT EXISTS user_facts (
     pinned          INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS episodes (
+    id                     TEXT PRIMARY KEY,
+    description            TEXT NOT NULL,
+    timestamp              TEXT NOT NULL,
+    location               TEXT,
+    people                 TEXT NOT NULL DEFAULT '[]',
+    emotional_valence      REAL NOT NULL DEFAULT 0.0,
+    emotional_intensity    REAL NOT NULL DEFAULT 0.0,
+    source_conversation_id TEXT,
+    source_message_id      TEXT,
+    image_path             TEXT,
+    embedding              BLOB,
+    tags                   TEXT NOT NULL DEFAULT '[]',
+    created_at             TEXT NOT NULL,
+    last_referenced        TEXT NOT NULL,
+    reference_count        INTEGER NOT NULL DEFAULT 1
+);
+
 CREATE TABLE IF NOT EXISTS llm_usage (
     id              TEXT PRIMARY KEY,
     conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
@@ -840,6 +858,130 @@ class AgentDB:
         if results:
             results[0]["_max_similarity"] = round(max_sim, 4)
         return results
+
+    # --- Episodes (synthetic memory) ---
+
+    def add_episode(
+        self,
+        description: str,
+        emotional_valence: float = 0.0,
+        emotional_intensity: float = 0.0,
+        people: list[str] | None = None,
+        tags: list[str] | None = None,
+        source_conversation_id: str | None = None,
+        source_message_id: str | None = None,
+        image_path: str | None = None,
+        location: str | None = None,
+    ) -> dict:
+        ep_id = _new_id("ep_")
+        now = _now()
+        with self._lock:
+            self.conn.execute(
+                """INSERT INTO episodes
+                   (id, description, timestamp, location, people,
+                    emotional_valence, emotional_intensity,
+                    source_conversation_id, source_message_id,
+                    image_path, tags, created_at, last_referenced)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    ep_id, description, now, location,
+                    json.dumps(people or []),
+                    max(-1.0, min(1.0, emotional_valence)),
+                    max(0.0, min(1.0, emotional_intensity)),
+                    source_conversation_id, source_message_id,
+                    image_path, json.dumps(tags or []),
+                    now, now,
+                ),
+            )
+            self.conn.commit()
+        return self.get_episode(ep_id)
+
+    def get_episode(self, episode_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM episodes WHERE id = ?", (episode_id,)
+        ).fetchone()
+        if not row:
+            return None
+        ep = dict(row)
+        ep.pop("embedding", None)
+        ep["people"] = json.loads(ep.get("people") or "[]")
+        ep["tags"] = json.loads(ep.get("tags") or "[]")
+        return ep
+
+    def get_all_episodes(self, limit: int = 200) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM episodes ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        results = []
+        for r in rows:
+            ep = dict(r)
+            ep.pop("embedding", None)
+            ep["people"] = json.loads(ep.get("people") or "[]")
+            ep["tags"] = json.loads(ep.get("tags") or "[]")
+            results.append(ep)
+        return results
+
+    def search_episodes(
+        self, query_embedding: list[float], top_k: int = 5, min_similarity: float = 0.3
+    ) -> list[dict]:
+        """Cosine similarity search over embedded episodes."""
+        rows = self.conn.execute(
+            "SELECT * FROM episodes WHERE embedding IS NOT NULL"
+        ).fetchall()
+        scored: list[tuple[float, dict]] = []
+        for row in rows:
+            ep = dict(row)
+            blob = ep.get("embedding")
+            if not blob:
+                continue
+            vec = _unpack_embedding(blob)
+            sim = _cosine_similarity(query_embedding, vec)
+            if sim >= min_similarity:
+                ep["similarity"] = round(sim, 4)
+                scored.append((sim, ep))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        results = []
+        for _, ep in scored[:top_k]:
+            ep.pop("embedding", None)
+            ep["people"] = json.loads(ep.get("people") or "[]")
+            ep["tags"] = json.loads(ep.get("tags") or "[]")
+            results.append(ep)
+        return results
+
+    def set_episode_embedding(self, episode_id: str, embedding: list[float]) -> bool:
+        blob = _pack_embedding(embedding)
+        with self._lock:
+            cur = self.conn.execute(
+                "UPDATE episodes SET embedding = ? WHERE id = ?", (blob, episode_id)
+            )
+            self.conn.commit()
+        return cur.rowcount > 0
+
+    def get_episodes_without_embeddings(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT id, description FROM episodes WHERE embedding IS NULL"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def touch_episodes(self, episode_ids: list[str]) -> None:
+        now = _now()
+        with self._lock:
+            for eid in episode_ids:
+                self.conn.execute(
+                    "UPDATE episodes SET reference_count = reference_count + 1, "
+                    "last_referenced = ? WHERE id = ?",
+                    (now, eid),
+                )
+            self.conn.commit()
+
+    def delete_episode(self, episode_id: str) -> bool:
+        with self._lock:
+            cur = self.conn.execute("DELETE FROM episodes WHERE id = ?", (episode_id,))
+            self.conn.commit()
+        return cur.rowcount > 0
+
+    def count_episodes(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM episodes").fetchone()[0]
 
     # --- Notifications ---
 

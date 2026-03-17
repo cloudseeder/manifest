@@ -12,6 +12,27 @@ from .db import AgentDB
 
 log = logging.getLogger("oap.agent.memory")
 
+EPISODE_EXTRACTION_SYSTEM = (
+    "You determine if a conversation turn contains an experience worth remembering "
+    "as an episodic memory — a meaningful shared moment, story, preference revealed "
+    "through anecdote, emotional event, or significant life update.\n\n"
+    "NOT an episode: routine tasks (check email, set reminder), greetings, "
+    "simple questions, tool results, or mundane exchanges.\n\n"
+    "IS an episode: sharing a photo of a dream house, talking about visiting parents, "
+    "remembering a family story, expressing strong feelings, life milestones, "
+    "discovering a new interest, or meaningful personal revelations.\n\n"
+    "Return JSON: {\"episode\": null} if nothing worth remembering, or:\n"
+    "{\"episode\": {\n"
+    "  \"description\": \"1-3 sentence narrative of the experience\",\n"
+    "  \"people\": [\"names mentioned\"],\n"
+    "  \"emotional_valence\": 0.0 to 1.0 (negative to positive),\n"
+    "  \"emotional_intensity\": 0.0 to 1.0 (mundane to life-changing),\n"
+    "  \"tags\": [\"topic\", \"keywords\"],\n"
+    "  \"location\": \"place or null\"\n"
+    "}}"
+)
+
+
 EXTRACTION_SYSTEM = (
     "You extract short factual statements about the user and their world from a conversation. "
     "Return a JSON object with a single key \"facts\" containing an array of strings. "
@@ -496,3 +517,116 @@ async def extract_and_store_facts(
                 await embed_missing_facts(db, discovery_url)
     except Exception:
         log.warning("User fact extraction failed", exc_info=True)
+
+
+async def embed_missing_episodes(db: "AgentDB", discovery_url: str) -> int:
+    """Embed all episodes that lack embeddings. Returns count embedded."""
+    missing = db.get_episodes_without_embeddings()
+    if not missing:
+        return 0
+    total = 0
+    for i in range(0, len(missing), 50):
+        batch = missing[i : i + 50]
+        texts = [e["description"] for e in batch]
+        embeddings = await embed_texts(discovery_url, texts)
+        if not embeddings or len(embeddings) != len(batch):
+            continue
+        for j in range(len(batch)):
+            if db.set_episode_embedding(batch[j]["id"], embeddings[j]):
+                total += 1
+    if total:
+        log.info("Embedded %d episode(s)", total)
+    return total
+
+
+async def extract_and_store_episode(
+    db: "AgentDB",
+    discovery_url: str,
+    user_message: str,
+    assistant_response: str,
+    *,
+    model: str = "qwen3:8b",
+    timeout: int = 120,
+    conversation_id: str | None = None,
+    message_id: str | None = None,
+    image_path: str | None = None,
+) -> None:
+    """Extract an episodic memory from a conversation turn if meaningful.
+
+    Fire-and-forget — errors are logged, never raised.
+    """
+    try:
+        prompt = (
+            f"User message: {user_message[:1000]}\n"
+            f"Assistant response: {assistant_response[:1000]}\n\n"
+            "Is this conversation turn a meaningful experience worth remembering?"
+        )
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "system": EPISODE_EXTRACTION_SYSTEM,
+            "stream": False,
+            "think": False,
+            "format": "json",
+            "options": {"num_predict": 400},
+        }
+        url = f"{discovery_url.rstrip('/')}/api/generate"
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+
+        text = data.get("response", "")
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        parsed = json.loads(text)
+
+        episode = parsed.get("episode")
+        if not episode or not isinstance(episode, dict):
+            return  # nothing worth remembering
+
+        description = episode.get("description", "").strip()
+        if not description or len(description) < 10:
+            return
+
+        people = episode.get("people", [])
+        if not isinstance(people, list):
+            people = []
+        people = [str(p) for p in people if p]
+
+        tags = episode.get("tags", [])
+        if not isinstance(tags, list):
+            tags = []
+        tags = [str(t) for t in tags if t]
+
+        valence = float(episode.get("emotional_valence", 0))
+        intensity = float(episode.get("emotional_intensity", 0))
+        location = episode.get("location")
+        if location and not isinstance(location, str):
+            location = None
+
+        ep = db.add_episode(
+            description=description[:500],
+            emotional_valence=valence,
+            emotional_intensity=intensity,
+            people=people,
+            tags=tags,
+            source_conversation_id=conversation_id,
+            source_message_id=message_id,
+            image_path=image_path,
+            location=location,
+        )
+        log.info(
+            "Episode stored: %s (valence=%.1f intensity=%.1f people=%s tags=%s)",
+            description[:80], valence, intensity, people, tags,
+        )
+
+        # Embed the episode
+        embeddings = await embed_texts(discovery_url, [description])
+        if embeddings and len(embeddings) == 1:
+            db.set_episode_embedding(ep["id"], embeddings[0])
+            log.info("Embedded episode %s", ep["id"])
+
+    except json.JSONDecodeError:
+        log.debug("Episode extraction returned non-JSON — skipping")
+    except Exception:
+        log.warning("Episode extraction failed", exc_info=True)
