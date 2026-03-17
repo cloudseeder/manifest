@@ -89,6 +89,21 @@ export interface UserFact {
   pinned: number
 }
 
+export interface Episode {
+  id: string
+  description: string
+  timestamp: string
+  location?: string | null
+  people: string[]
+  emotional_valence: number
+  emotional_intensity: number
+  tags: string[]
+  image_path?: string | null
+  created_at: string
+  last_referenced: string
+  reference_count: number
+}
+
 export function parseSSE(text: string): Array<{ event: string; data: any }> {
   const results: Array<{ event: string; data: any }> = []
   const lines = text.split('\n')

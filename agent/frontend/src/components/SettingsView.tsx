@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import type { AgentSettings, LLMUsageSummary, UserFact } from '@/lib/types'
+import type { AgentSettings, LLMUsageSummary, UserFact, Episode } from '@/lib/types'
 import { useVoices, useTTS } from '@/hooks/useTTS'
 import PersonaAvatar from './PersonaAvatar'
 
@@ -97,6 +97,7 @@ export default function SettingsView() {
   const navigate = useNavigate()
   const [settings, setSettings] = useState<AgentSettings | null>(null)
   const [facts, setFacts] = useState<UserFact[]>([])
+  const [episodes, setEpisodes] = useState<Episode[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [name, setName] = useState('')
@@ -123,9 +124,10 @@ export default function SettingsView() {
     setLoading(true)
     setError(null)
     try {
-      const [settingsRes, memoryRes, usageRes] = await Promise.all([
+      const [settingsRes, memoryRes, episodesRes, usageRes] = await Promise.all([
         fetch('/v1/agent/settings'),
         fetch('/v1/agent/memory'),
+        fetch('/v1/agent/episodes'),
         fetch('/v1/agent/usage'),
       ])
       if (settingsRes.ok) {
@@ -143,6 +145,10 @@ export default function SettingsView() {
       if (memoryRes.ok) {
         const m = await memoryRes.json()
         setFacts(m.facts || [])
+      }
+      if (episodesRes.ok) {
+        const e = await episodesRes.json()
+        setEpisodes(e.episodes || [])
       }
       if (usageRes.ok) {
         setUsage(await usageRes.json())
@@ -780,6 +786,56 @@ export default function SettingsView() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* Episodes section */}
+              {episodes.length > 0 && (
+                <div className="mt-6">
+                  <h4 className="mb-2 text-sm font-medium text-gray-700">
+                    Episodic Memories ({episodes.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {episodes.map((ep) => (
+                      <div
+                        key={ep.id}
+                        className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-3 py-2"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <p className="text-sm text-gray-700">{ep.description}</p>
+                            <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
+                              {ep.people.length > 0 && (
+                                <span>with {ep.people.join(', ')}</span>
+                              )}
+                              {ep.location && <span>at {ep.location}</span>}
+                              {ep.emotional_intensity > 0.3 && (
+                                <span className={ep.emotional_valence > 0 ? 'text-green-600' : ep.emotional_valence < -0.3 ? 'text-red-500' : 'text-gray-500'}>
+                                  {ep.emotional_valence > 0.3 ? 'positive' : ep.emotional_valence < -0.3 ? 'difficult' : 'neutral'}
+                                  {ep.emotional_intensity > 0.7 ? ' (strong)' : ''}
+                                </span>
+                              )}
+                              {ep.tags.length > 0 && (
+                                <span>{ep.tags.map(t => `#${t}`).join(' ')}</span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              const res = await fetch(`/v1/agent/episodes/${ep.id}`, { method: 'DELETE' })
+                              if (res.ok) setEpisodes(prev => prev.filter(e => e.id !== ep.id))
+                            }}
+                            className="flex-shrink-0 text-gray-400 hover:text-red-500"
+                            title="Delete episode"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
