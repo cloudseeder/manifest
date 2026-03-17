@@ -64,6 +64,21 @@ class EmailDB:
         if "filed" not in cols:
             self.conn.execute("ALTER TABLE messages ADD COLUMN filed INTEGER DEFAULT 0")
             self.conn.commit()
+        if "priority" not in cols:
+            self.conn.execute("ALTER TABLE messages ADD COLUMN priority TEXT")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_priority ON messages(priority)")
+            self.conn.commit()
+        # Overrides table for sender-based classification
+        self.conn.executescript("""
+            CREATE TABLE IF NOT EXISTS classifier_overrides (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                pattern     TEXT NOT NULL UNIQUE,
+                category    TEXT,
+                priority    TEXT,
+                created_at  TEXT NOT NULL
+            );
+        """)
+        self.conn.commit()
         # Normalize received_at to UTC (+00:00) for consistent string comparison
         self._normalize_timestamps()
 
@@ -149,6 +164,7 @@ class EmailDB:
         unread: bool = False,
         query: str | None = None,
         category: str | None = None,
+        priority: str | None = None,
         limit: int = 20,
     ) -> list[dict]:
         conditions = ["folder = ?"]
@@ -164,6 +180,11 @@ class EmailDB:
         if category:
             conditions.append("category = ?")
             params.append(category.lower())
+        if priority:
+            priorities = [p.strip().lower() for p in priority.split(",")]
+            placeholders = ",".join("?" * len(priorities))
+            conditions.append(f"priority IN ({placeholders})")
+            params.extend(priorities)
         if query:
             query_sql, query_params = self._parse_query(query)
             conditions.append(query_sql)
@@ -283,6 +304,84 @@ class EmailDB:
             cur = self.conn.execute("UPDATE messages SET category = NULL WHERE category IS NOT NULL")
             self.conn.commit()
             return cur.rowcount
+
+    def set_classification(self, msg_id: str, category: str | None, priority: str | None) -> None:
+        """Set both category and priority in one call."""
+        with self._lock:
+            self.conn.execute(
+                "UPDATE messages SET category = ?, priority = ? WHERE id = ?",
+                (category, priority, msg_id),
+            )
+            self.conn.commit()
+
+    def get_unclassified(self, limit: int = 50) -> list[dict]:
+        """Return messages missing category or priority."""
+        rows = self.conn.execute(
+            "SELECT id, from_name, from_email, subject, snippet FROM messages "
+            "WHERE category IS NULL OR priority IS NULL "
+            "ORDER BY received_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def reset_priorities(self) -> int:
+        """Clear all priorities so messages get reprioritized."""
+        with self._lock:
+            cur = self.conn.execute("UPDATE messages SET priority = NULL WHERE priority IS NOT NULL")
+            self.conn.commit()
+            return cur.rowcount
+
+    # --- Classifier overrides ---
+
+    def add_override(self, pattern: str, category: str | None = None, priority: str | None = None) -> dict:
+        """Add or update a classifier override. Pattern is email or @domain."""
+        now = _now()
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO classifier_overrides (pattern, category, priority, created_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(pattern) DO UPDATE SET category=excluded.category, priority=excluded.priority",
+                (pattern.lower(), category, priority, now),
+            )
+            self.conn.commit()
+        row = self.conn.execute(
+            "SELECT * FROM classifier_overrides WHERE pattern = ?", (pattern.lower(),)
+        ).fetchone()
+        return dict(row)
+
+    def list_overrides(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM classifier_overrides ORDER BY pattern"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def remove_override(self, pattern: str) -> bool:
+        with self._lock:
+            cur = self.conn.execute(
+                "DELETE FROM classifier_overrides WHERE pattern = ?", (pattern.lower(),)
+            )
+            self.conn.commit()
+        return cur.rowcount > 0
+
+    def get_override(self, from_email: str) -> dict | None:
+        """Check for a matching override: exact email first, then @domain."""
+        email = from_email.lower()
+        row = self.conn.execute(
+            "SELECT category, priority FROM classifier_overrides WHERE pattern = ?",
+            (email,),
+        ).fetchone()
+        if row:
+            return dict(row)
+        # Domain match
+        if "@" in email:
+            domain = "@" + email.split("@", 1)[1]
+            row = self.conn.execute(
+                "SELECT category, priority FROM classifier_overrides WHERE pattern = ?",
+                (domain,),
+            ).fetchone()
+            if row:
+                return dict(row)
+        return None
 
     # ------------------------------------------------------------------
     # Query parser — supports OR, field prefixes (from:, subject:, body:)

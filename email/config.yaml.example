@@ -27,9 +27,28 @@ max_cached: 500
 # Default scan window when no 'since' parameter provided (hours)
 default_scan_hours: 24
 
-# LLM email classifier — categorizes messages as inbox/marketing/transactional/spam
+# LLM email classifier — categorizes and prioritizes messages
 classifier:
   enabled: false                        # Set to true to enable classification
   model: "qwen3:14b"                    # Ollama model for classification
   ollama_url: "http://localhost:11434"   # Ollama API endpoint
   timeout: 30                           # Per-message timeout (seconds)
+  use_escalation: false                 # Use big LLM (from escalation config) for better accuracy
+
+  # Sender overrides — force category/priority without LLM classification.
+  # DB overrides (set via chat: "mark emails from X as important") take precedence.
+  # sender_overrides:
+  #   "mycpa@accounting.com":
+  #     category: personal
+  #     priority: important
+  #   "@facebookmail.com":
+  #     priority: noise
+  #   "@bankofamerica.com":
+  #     priority: urgent
+
+# Big LLM for classification (optional — used when classifier.use_escalation: true)
+# escalation:
+#   enabled: true
+#   provider: anthropic
+#   model: claude-sonnet-4-6
+#   timeout: 30

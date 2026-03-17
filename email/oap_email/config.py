@@ -46,6 +46,30 @@ _DEFAULT_CATEGORIES: dict[str, str] = {
 }
 
 
+_DEFAULT_PRIORITIES: dict[str, str] = {
+    "urgent": (
+        "needs attention now: bank/financial alerts, password resets, "
+        "security notices, direct requests from known people asking for "
+        "a timely response, appointment confirmations for today"
+    ),
+    "important": (
+        "should see today: emails from CPA/accountant/lawyer, HOA notices, "
+        "work correspondence, personal messages from real people, "
+        "bills or invoices, appointment reminders"
+    ),
+    "informational": (
+        "nice to know but no action needed: LinkedIn updates, news digests, "
+        "community announcements (PLUG, meetups), industry newsletters, "
+        "social media summaries about people you know"
+    ),
+    "noise": (
+        "safe to ignore: Facebook/Instagram/Reddit notifications, marketing emails, "
+        "promotional offers, subscription renewals, automated social media alerts, "
+        "bulk newsletters from companies"
+    ),
+}
+
+
 @dataclass
 class ClassifierConfig:
     enabled: bool = False
@@ -53,6 +77,20 @@ class ClassifierConfig:
     model: str = "qwen3.5:latest"
     timeout: int = 120
     categories: dict[str, str] = field(default_factory=lambda: dict(_DEFAULT_CATEGORIES))
+    priorities: dict[str, str] = field(default_factory=lambda: dict(_DEFAULT_PRIORITIES))
+    sender_overrides: dict[str, dict[str, str]] = field(default_factory=dict)
+    use_escalation: bool = False  # use big LLM instead of local model
+
+
+@dataclass
+class EscalationConfig:
+    enabled: bool = False
+    provider: str = "anthropic"
+    base_url: str = ""
+    model: str = ""
+    api_key: str = ""
+    timeout: int = 60
+    max_tokens: int = 256
 
 
 @dataclass
@@ -73,6 +111,7 @@ class Config:
     imap: IMAPConfig = field(default_factory=IMAPConfig)
     classifier: ClassifierConfig = field(default_factory=ClassifierConfig)
     auto_file: AutoFileConfig = field(default_factory=AutoFileConfig)
+    escalation: EscalationConfig = field(default_factory=EscalationConfig)
     db_path: str = "oap_email.db"
     host: str = "127.0.0.1"
     port: int = 8305
@@ -121,6 +160,29 @@ def load_config(path: str | None = None) -> Config:
         if "categories" in cl:
             # Merge user categories into defaults — user can override or add
             cfg.classifier.categories.update(cl["categories"])
+        if "priorities" in cl:
+            cfg.classifier.priorities.update(cl["priorities"])
+        if "sender_overrides" in cl:
+            cfg.classifier.sender_overrides = {
+                k.lower(): v for k, v in cl["sender_overrides"].items()
+            }
+        cfg.classifier.use_escalation = cl.get("use_escalation", cfg.classifier.use_escalation)
+
+        # Escalation (for classifier big LLM option)
+        esc = raw.get("escalation", {})
+        cfg.escalation.enabled = esc.get("enabled", cfg.escalation.enabled)
+        cfg.escalation.provider = esc.get("provider", cfg.escalation.provider)
+        cfg.escalation.base_url = esc.get("base_url", cfg.escalation.base_url)
+        cfg.escalation.model = esc.get("model", cfg.escalation.model)
+        cfg.escalation.api_key = os.environ.get(
+            "OAP_ESCALATION_API_KEY",
+            os.environ.get(
+                f"OAP_{cfg.escalation.provider.upper()}_API_KEY",
+                esc.get("api_key", ""),
+            ),
+        )
+        cfg.escalation.timeout = esc.get("timeout", cfg.escalation.timeout)
+        cfg.escalation.max_tokens = esc.get("max_tokens", cfg.escalation.max_tokens)
 
         # Auto-file
         af = raw.get("auto_file", {})

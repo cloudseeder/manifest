@@ -132,7 +132,7 @@ async def classify():
     if not _cfg or not _cfg.classifier.enabled:
         raise HTTPException(status_code=400, detail="Classifier not enabled")
     from .classifier import classify_uncategorized
-    count = await classify_uncategorized(_cfg.classifier, _db)
+    count = await classify_uncategorized(_cfg.classifier, _db, _cfg.escalation)
     return {"classified": count}
 
 
@@ -197,9 +197,10 @@ async def reclassify():
     if not _cfg or not _cfg.classifier.enabled:
         raise HTTPException(status_code=400, detail="Classifier not enabled")
     reset = _db.reset_categories()
+    _db.reset_priorities()
     log.info("Reset %d message categories for reclassification", reset)
     from .classifier import classify_uncategorized
-    count = await classify_uncategorized(_cfg.classifier, _db)
+    count = await classify_uncategorized(_cfg.classifier, _db, _cfg.escalation)
     return {"reset": reset, "classified": count}
 
 
@@ -214,6 +215,7 @@ async def list_messages(
     unread: bool = False,
     query: str | None = None,
     category: str | None = None,
+    priority: str | None = None,
     limit: int = Query(20, ge=1, le=100),
     _skip_default_since: bool = False,
 ):
@@ -223,7 +225,7 @@ async def list_messages(
     if since is None and not _skip_default_since:
         hours = _cfg.default_scan_hours if _cfg else 24
         since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-    messages = _db.list_messages(folder=folder, since=since, unread=unread, query=query, category=category, limit=limit)
+    messages = _db.list_messages(folder=folder, since=since, unread=unread, query=query, category=category, priority=priority, limit=limit)
     return {"messages": messages, "total": len(messages)}
 
 
@@ -316,8 +318,8 @@ async def dispatch(req: DispatchRequest):
     elif action == "list":
         result = await list_messages(
             folder=req.folder, since=req.since, unread=req.unread,
-            query=req.query, category=req.category, limit=req.limit,
-            _skip_default_since=True,
+            query=req.query, category=req.category, priority=req.priority,
+            limit=req.limit, _skip_default_since=True,
         )
         log.info("Dispatch list → %d message(s)", result.get("total", 0))
         return result
@@ -334,6 +336,24 @@ async def dispatch(req: DispatchRequest):
         log.info("Dispatch summary → %d received, %d unread",
                  result.get("total_received", 0), result.get("unread_count", 0))
         return result
+    elif action in ("overrides_list", "overrides"):
+        return {"overrides": _db.list_overrides()}
+    elif action in ("overrides_add", "override_add", "override"):
+        if not req.override_pattern:
+            raise HTTPException(status_code=400, detail="override_pattern required")
+        if not req.override_category and not req.override_priority:
+            raise HTTPException(status_code=400, detail="override_category or override_priority required")
+        result = _db.add_override(req.override_pattern, req.override_category, req.override_priority)
+        log.info("Override added: %s → category=%s priority=%s",
+                 req.override_pattern, req.override_category, req.override_priority)
+        return result
+    elif action in ("overrides_remove", "override_remove"):
+        if not req.override_pattern:
+            raise HTTPException(status_code=400, detail="override_pattern required")
+        removed = _db.remove_override(req.override_pattern)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Override not found")
+        return {"removed": req.override_pattern}
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
 
