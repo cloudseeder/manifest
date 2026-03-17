@@ -611,7 +611,9 @@ async def chat(req: ChatRequest):
             def _format_fact(f):
                 line = f"- {f['fact']}"
                 if f.get("image_path"):
-                    line += " [has saved image]"
+                    import os
+                    filename = os.path.basename(f["image_path"])
+                    line += f" [image: /v1/agent/images/{filename}]"
                 return line
 
             user_lines = [_format_fact(f) for f in pinned_user + learned_user]
@@ -633,12 +635,16 @@ async def chat(req: ChatRequest):
                     "from past conversations. Use them to give personalized, contextual "
                     "answers. When the user asks about their preferences, history, or "
                     "people they know, answer from these facts — do NOT say you can't "
-                    "help or suggest external searches."
+                    "help or suggest external searches. You CAN display saved images "
+                    "using markdown — never say you can't show images when a URL is "
+                    "available in the facts."
                 )
                 if has_images:
                     preamble += (
-                        " Some facts are linked to images the user shared with you "
-                        "(marked [has saved image]). Reference these when relevant."
+                        " Some facts are linked to images the user shared with you. "
+                        "When relevant, include the image in your response using markdown: "
+                        "![description](/v1/agent/images/filename.jpg). The image URLs "
+                        "are shown in brackets next to the fact."
                     )
                 persona_parts.append(preamble + "\n\n" + "\n".join(memory_parts))
 
