@@ -52,10 +52,10 @@ The agent service adds the stateful layer: conversation history, task definition
 
 Manifest doesn't call these services directly — it sends tasks to the discovery service (`/v1/chat`), which discovers and invokes the right manifests. But scheduled tasks make these services particularly useful:
 
-- **Email scanner** (`oap-email-api` :8305) — IMAP scanning with LLM-powered classification and auto-filing. A scheduled task like "check my email for new personal messages" discovers the email manifest, queries the scanner, and produces a notification with the summary. Tasks can also trigger classification and filing.
-- **Reminder service** (`oap-reminder-api` :8304) — SQLite-backed reminders with recurrence support. A scheduled task like "check for due reminders" discovers the reminder manifest and surfaces due items in the notification queue. Chat can also create reminders conversationally ("remind me to call mom Friday at 2pm").
+- **Email scanner** (`oap-email-api` :8305) — IMAP scanning with LLM-powered classification (category + priority), sender overrides, and auto-filing. See [EMAIL.md](EMAIL.md) for full documentation.
+- **Reminder service** (`oap-reminder-api` :8304) — Reminders with recurrence, place-based triggers, date ranges, and title-based operations. See [REMINDER.md](REMINDER.md) for full documentation.
 
-Both services have OAP manifests in `reference/oap_discovery/manifests/` and are auto-indexed by the discovery service on startup.
+Both services have OAP manifests in `discovery/manifests/` and are auto-indexed by the discovery service on startup.
 
 ## Backend: `reference/oap_agent/`
 
