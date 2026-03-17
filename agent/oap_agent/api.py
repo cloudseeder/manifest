@@ -996,8 +996,6 @@ async def chat(req: ChatRequest):
             and not _used_tools  # tool results are not personal sharing
             and not re.match(r"^(tell|show|what|list|describe|read|check|get|find)\b", req.message.strip(), re.IGNORECASE)
         )
-        log.info("Memory extraction check: enabled=%s content=%d sharing=%s tools=%s",
-                 settings.get("memory_enabled"), len(result.get("content", "")), _user_is_sharing, _used_tools)
         if settings.get("memory_enabled") == "true" and result["content"] and _user_is_sharing:
             from .memory import extract_and_store_facts, extract_and_store_episode
             image_path = saved_image_paths[0] if saved_image_paths else None
