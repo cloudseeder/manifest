@@ -107,13 +107,13 @@ async def scan():
         if total > 50:
             # Initial ingest — classify everything
             while True:
-                batch = await classify_uncategorized(_cfg.classifier, _db)
+                batch = await classify_uncategorized(_cfg.classifier, _db, _cfg.escalation)
                 classified += batch
                 if batch == 0:
                     break
         else:
             # Incremental — single batch, keeps scan fast
-            classified = await classify_uncategorized(_cfg.classifier, _db)
+            classified = await classify_uncategorized(_cfg.classifier, _db, _cfg.escalation)
 
     # Auto-file classified messages
     filed = 0
