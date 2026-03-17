@@ -309,10 +309,13 @@ def _is_conversational_fast(message: str) -> bool | None:
     # Short conversational patterns — greetings, thanks, acknowledgments
     if len(stripped) <= 100 and _CONVERSATIONAL_PATTERNS.match(stripped):
         return True
-    # Memory patterns — "remember X", "tell me about X" — no tools needed.
-    # "Remember" means save to memory, not set a reminder.
+    # Memory patterns — unambiguous memory operations only.
+    # "Remember" = save to memory. "What do you know/remember" = recall.
+    # "Tell me about" is NOT here — it's ambiguous (could be web search
+    # like "tell me about Lake Walden Cove" or recall like "tell me about Amy").
+    # Let the big LLM classifier decide those.
     _memory_patterns = re.compile(
-        r"^(remember\b|tell\s+me\s+about|what\s+do\s+you\s+know\s+about|what\s+do\s+you\s+remember)\b",
+        r"^(remember\b|what\s+do\s+you\s+know\s+about|what\s+do\s+you\s+remember)\b",
         re.IGNORECASE,
     )
     if _memory_patterns.match(stripped):
