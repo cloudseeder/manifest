@@ -998,16 +998,17 @@ async def chat(req: ChatRequest):
         if settings.get("memory_enabled") == "true" and result["content"] and _user_is_sharing:
             from .memory import extract_and_store_facts, extract_and_store_episode
             image_path = saved_image_paths[0] if saved_image_paths else None
+            _extract_model = req.model or model  # ensure model is never None
             asyncio.create_task(
                 extract_and_store_facts(
                     _db, _discovery_url, req.message, result["content"],
-                    model=req.model, image_path=image_path, max_facts=_max_facts,
+                    model=_extract_model, image_path=image_path, max_facts=_max_facts,
                 )
             )
             asyncio.create_task(
                 extract_and_store_episode(
                     _db, _discovery_url, req.message, result["content"],
-                    model=req.model, image_path=image_path,
+                    model=_extract_model, image_path=image_path,
                     conversation_id=conv_id, message_id=assistant_msg["id"],
                 )
             )
