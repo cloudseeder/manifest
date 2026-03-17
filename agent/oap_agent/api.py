@@ -322,7 +322,7 @@ def _is_conversational_fast(message: str) -> bool | None:
         return False
     # Task-related nouns anywhere → definitely needs tools
     _task_nouns = re.compile(
-        r"\b(remind|reminder|email|weather|news|stock|task|schedule|calendar)\b",
+        r"\b(remind|reminder|email|weather|news|stock|task|schedule|calendar|search|find|look\s*up)\b",
         re.IGNORECASE,
     )
     if _task_nouns.search(stripped):
