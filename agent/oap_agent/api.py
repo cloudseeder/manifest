@@ -333,12 +333,14 @@ def _is_conversational_fast(message: str) -> bool | None:
 
 _CLASSIFY_SYSTEM = (
     "Classify the user's message as either 'tools' or 'conversational'.\n\n"
-    "'tools' — the user wants to DO something: check reminders, look up weather, "
-    "search email, complete a task, get information from an external source, "
-    "run a command, or any action requiring data lookup or modification.\n\n"
-    "'conversational' — the user is chatting, sharing personal info, making small "
-    "talk, saying thanks, or having a casual conversation that needs no external "
-    "data or actions.\n\n"
+    "'tools' — the user wants to DO something that requires an external service: "
+    "check reminders, look up weather, search email, complete a task, "
+    "run a command, or modify data.\n\n"
+    "'conversational' — the user is chatting, sharing personal info, asking about "
+    "themselves or people they know, recalling preferences, making small talk, "
+    "or asking questions that can be answered from the provided memory/context. "
+    "If memory facts are provided and they answer the user's question, "
+    "classify as 'conversational'.\n\n"
     "Return ONLY the word 'tools' or 'conversational', nothing else."
 )
 
