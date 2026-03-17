@@ -989,7 +989,8 @@ async def chat(req: ChatRequest):
         # Skip extraction when the user asked a question — the assistant's
         # response just parrots stored facts, and the extractor would save
         # hallucinated embellishments as new "facts" (feedback loop).
-        _used_tools = bool(result.get("tool_calls") or result.get("raw", {}).get("oap_cloud_tools"))
+        _tc = result.get("tool_calls") or []
+        _used_tools = len(_tc) > 0 or bool(result.get("raw", {}).get("oap_cloud_tools"))
         _user_is_sharing = (
             "?" not in req.message
             and not _used_tools  # tool results are not personal sharing
