@@ -903,6 +903,7 @@ async def chat(req: ChatRequest):
         if (not conversational
             and _escalation_cfg and _escalation_cfg.enabled
             and not result.get("tool_calls")
+            and not result.get("raw", {}).get("oap_cloud_tools")
             and result.get("content")):
             log.info("Tool bridge returned no tool calls — re-routing to big LLM")
             try:
