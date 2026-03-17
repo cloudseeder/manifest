@@ -603,15 +603,36 @@ async def chat(req: ChatRequest):
             learned_user, learned_family = _split_facts(learned)
 
             memory_parts = []
-            user_lines = [f"- {f['fact']}" for f in pinned_user + learned_user]
-            family_lines = [f"- {f['fact']}" for f in pinned_family + learned_family]
+
+            def _format_fact(f):
+                line = f"- {f['fact']}"
+                if f.get("image_path"):
+                    line += " [has saved image]"
+                return line
+
+            user_lines = [_format_fact(f) for f in pinned_user + learned_user]
+            family_lines = [_format_fact(f) for f in pinned_family + learned_family]
+
+            has_images = any(f.get("image_path") for f in facts)
 
             if user_lines:
                 memory_parts.append("About the user:\n" + "\n".join(user_lines))
             if family_lines:
                 memory_parts.append("Family and pets (NOT the user):\n" + "\n".join(family_lines))
             if memory_parts:
-                persona_parts.append("\n".join(memory_parts))
+                preamble = (
+                    "You have a personal memory of the user. These facts were learned "
+                    "from past conversations. Use them to give personalized, contextual "
+                    "answers. When the user asks about their preferences, history, or "
+                    "people they know, answer from these facts — do NOT say you can't "
+                    "help or suggest external searches."
+                )
+                if has_images:
+                    preamble += (
+                        " Some facts are linked to images the user shared with you "
+                        "(marked [has saved image]). Reference these when relevant."
+                    )
+                persona_parts.append(preamble + "\n\n" + "\n".join(memory_parts))
 
     if persona_parts:
         llm_messages.insert(0, {"role": "system", "content": "\n\n".join(persona_parts)})
