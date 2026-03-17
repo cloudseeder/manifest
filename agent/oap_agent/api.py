@@ -36,6 +36,7 @@ _discovery_model: str = "qwen3:14b"
 _discovery_timeout: int = 300
 _debug_mode: bool = False
 _max_tasks: int = 20
+_max_facts: int = 2000
 _voice_cfg = None  # VoiceConfig, set in lifespan
 _escalation_cfg: EscalationConfig | None = None
 _tts_enabled = False
@@ -75,7 +76,7 @@ def _validate_cron(schedule: str) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _db, _event_bus, _scheduler, _discovery_url, _discovery_model, _discovery_timeout
-    global _debug_mode, _max_tasks, _voice_cfg, _escalation_cfg, _tts_enabled
+    global _debug_mode, _max_tasks, _max_facts, _voice_cfg, _escalation_cfg, _tts_enabled
 
     config_path = getattr(app, "_config_path", "config.yaml")
     cfg = load_config(config_path)
@@ -87,6 +88,7 @@ async def lifespan(app: FastAPI):
     _discovery_timeout = cfg.discovery.timeout
     _debug_mode = cfg.debug
     _max_tasks = cfg.max_tasks
+    _max_facts = cfg.max_facts
 
     _voice_cfg = cfg.voice
 
@@ -852,7 +854,7 @@ async def chat(req: ChatRequest):
             asyncio.create_task(
                 extract_and_store_facts(
                     _db, _discovery_url, req.message, result["content"],
-                    model=req.model, image_path=image_path,
+                    model=req.model, image_path=image_path, max_facts=_max_facts,
                 )
             )
 

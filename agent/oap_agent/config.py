@@ -62,6 +62,7 @@ class AgentConfig:
     debug: bool = True
     max_tasks: int = 20
     max_concurrent_tasks: int = 1
+    max_facts: int = 2000            # max user facts before LRU eviction (pinned facts exempt)
 
 
 def _validate_url(url: str) -> str:
@@ -137,5 +138,6 @@ def load_config(config_path: str = "config.yaml") -> AgentConfig:
     cfg.debug = raw.get("debug", cfg.debug)
     cfg.max_tasks = raw.get("max_tasks", cfg.max_tasks)
     cfg.max_concurrent_tasks = raw.get("max_concurrent_tasks", cfg.max_concurrent_tasks)
+    cfg.max_facts = raw.get("max_facts", cfg.max_facts)
 
     return cfg

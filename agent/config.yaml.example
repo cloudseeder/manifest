@@ -10,6 +10,9 @@ discovery:
   model: "qwen3:8b"
   timeout: 120
 
+# Max user facts/memories before LRU eviction (pinned facts exempt)
+max_facts: 2000
+
 voice:
   enabled: true
   whisper_model: "base"
