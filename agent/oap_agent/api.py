@@ -989,9 +989,11 @@ async def chat(req: ChatRequest):
         # Skip extraction when the user asked a question — the assistant's
         # response just parrots stored facts, and the extractor would save
         # hallucinated embellishments as new "facts" (feedback loop).
+        _used_tools = bool(result.get("tool_calls") or result.get("raw", {}).get("oap_cloud_tools"))
         _user_is_sharing = (
             "?" not in req.message
-            and not re.match(r"^(tell|show|what|list|describe)\b", req.message.strip(), re.IGNORECASE)
+            and not _used_tools  # tool results are not personal sharing
+            and not re.match(r"^(tell|show|what|list|describe|read|check|get|find)\b", req.message.strip(), re.IGNORECASE)
         )
         if settings.get("memory_enabled") == "true" and result["content"] and _user_is_sharing:
             from .memory import extract_and_store_facts, extract_and_store_episode
