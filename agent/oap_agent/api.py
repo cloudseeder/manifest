@@ -781,6 +781,24 @@ async def chat(req: ChatRequest):
                 yield _sse_event("done", {"conversation_id": conv_id})
                 return
 
+        # If the tool bridge returned a result with no tool calls and
+        # escalation is available, re-route through the big LLM. This
+        # catches cases where the classifier said "tools" but no relevant
+        # tool was found — the small LLM hallucinates advice instead of
+        # answering from memory context.
+        if (not conversational
+            and _escalation_cfg and _escalation_cfg.enabled
+            and not result.get("tool_calls")
+            and result.get("content")):
+            log.info("Tool bridge returned no tool calls — re-routing to big LLM")
+            try:
+                escalated = await execute_escalated(llm_messages, _escalation_cfg)
+                if escalated and escalated.get("content"):
+                    result = escalated
+                    conversational = True  # treat as conversational for logging
+            except Exception:
+                pass  # keep the original result
+
         # Log debug trace from tool bridge
         if not conversational:
             raw = result.get("raw", {})
