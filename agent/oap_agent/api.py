@@ -595,8 +595,13 @@ async def chat(req: ChatRequest):
 
     # Greeting or notification query — inject pending notifications as context
     is_first_message = len(history) <= 1  # Only the greeting itself
-    greeting = _is_greeting(req.message) and is_first_message
-    notif_query = _is_notification_query(req.message)
+    is_greeting_msg = _is_greeting(req.message)
+    greeting = is_greeting_msg and is_first_message
+    # Also treat greetings in existing conversations as briefing triggers
+    # if there are pending notifications
+    notif_query = _is_notification_query(req.message) or (
+        is_greeting_msg and not is_first_message and _db.count_pending_notifications() > 0
+    )
 
     async def stream_response():
         nonlocal llm_messages
