@@ -625,9 +625,16 @@ async def chat(req: ChatRequest):
                 memory_parts.append("About the user:\n" + "\n".join(user_lines))
             if family_lines:
                 memory_parts.append("Family and pets (NOT the user):\n" + "\n".join(family_lines))
-            _memory_has_images = any(f.get("image_path") for f in facts)
-            if use_rag and facts:
+            # Track whether image-linked facts are highly relevant to this query
+            # (not just present in the results). Only count images with sim > 0.55.
+            if use_rag:
+                _memory_has_images = any(
+                    f.get("image_path") and f.get("similarity", 0) > 0.55
+                    for f in facts
+                )
                 _memory_max_sim = max((f.get("similarity", 0) for f in facts), default=0)
+            else:
+                _memory_has_images = any(f.get("image_path") for f in facts)
 
             if memory_parts:
                 preamble = (
