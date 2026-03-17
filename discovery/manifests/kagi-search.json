@@ -3,7 +3,7 @@
   "name": "kagi-search",
   "description": "Search the web using Kagi premium search. Use for any question that needs current information, facts you don't know, finding businesses or services, looking up people or companies, research, troubleshooting, or anything that would benefit from web results. Examples: 'find a plumber in Montgomery TX', 'what time does Home Depot close', 'how to reset a Netgear router', 'latest news about AI agents'.",
   "input": {
-    "format": "query",
+    "format": "application/json",
     "description": "Search query as the 'q' parameter. Write natural search queries.",
     "parameters": {
       "q": {"type": "string", "description": "Search query (required)", "required": true},
