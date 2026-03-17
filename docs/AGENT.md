@@ -69,7 +69,7 @@ SQLite tables, WAL journal mode, foreign keys enforced:
 - **task_runs** — id, task_id (FK), status (running/success/error), prompt, response, tool_calls (JSON), error, duration_ms
 - **notifications** — id, type, title, body, source, task_id (FK), run_id, priority, dismissed, created_at
 - **agent_settings** — key/value pairs (persona, voice config, last_greeting_at, etc.)
-- **user_facts** — extracted facts about the user from conversation history
+- **user_facts** — extracted facts about the user from conversation history. Optional `image_path` links a fact to a saved image when extracted from visual input.
 - **llm_usage** — per-request token accounting (provider, model, tokens_in, tokens_out, cost)
 
 IDs are prefixed short UUIDs: `conv_`, `msg_`, `task_`, `run_`, `notif_`.
@@ -79,7 +79,7 @@ IDs are prefixed short UUIDs: `conv_`, `msg_`, `task_`, `run_`, `notif_`.
 All local-only on `:8303`. No authentication — Manifest is a local tool, not exposed publicly.
 
 **Chat:**
-- `POST /v1/agent/chat` — send message, returns SSE stream (message_saved → tool_call* → assistant_message → done)
+- `POST /v1/agent/chat` — send message, returns SSE stream (message_saved → tool_call* → assistant_message → done). Accepts optional `images: string[]` for vision.
 - `GET /v1/agent/conversations` — list (paginated)
 - `POST /v1/agent/conversations` — create
 - `GET /v1/agent/conversations/{id}` — get with messages
@@ -101,20 +101,28 @@ All local-only on `:8303`. No authentication — Manifest is a local tool, not e
 - `POST /v1/agent/notifications/{id}/dismiss` — dismiss one
 - `POST /v1/agent/notifications/dismiss-all` — dismiss all
 
+**Images:**
+- `GET /v1/agent/images/{filename}` — serve saved image
+
+**Prompt Refinement:**
+- `POST /v1/agent/tasks/refine` — refine a task prompt via big LLM for small LLM execution
+
 **Events + Health:**
 - `GET /v1/agent/events` — SSE stream (task_run_started, task_run_finished, notification_new)
-- `GET /v1/agent/health` — health check
+- `GET /v1/agent/health` — health check (includes `escalation_enabled` flag)
 
 ### Chat Flow
 
-`POST /v1/agent/chat` accepts `{conversation_id, message, model}` and returns SSE:
+`POST /v1/agent/chat` accepts `{conversation_id, message, model, images?}` and returns SSE:
 
-1. Save user message to DB → emit `event: message_saved`
-2. Build messages array from conversation history
-3. `POST http://localhost:8300/v1/chat` with `stream: false`
-4. Parse response + debug trace → emit `event: tool_call` for each tool execution
-5. Save assistant message to DB → emit `event: assistant_message`
-6. Emit `event: done`
+1. Save user message to DB (images saved to disk, paths in metadata) → emit `event: message_saved`
+2. Build messages array from conversation history, attach images to last user message
+3. **Intent classification:** Fast regex check for obvious cases (greetings → conversational, task nouns → tools). Ambiguous messages classified by the big LLM via one cheap API call (~$0.001). This eliminates the verb-allowlist problem — the big LLM understands natural language intent regardless of phrasing.
+4. Route: conversational → `execute_conversational()` (no tools), task → `POST http://localhost:8300/v1/chat` (tool bridge)
+5. Parse response + debug trace → emit `event: tool_call` for each tool execution
+6. Save assistant message to DB → emit `event: assistant_message`
+7. Fire-and-forget: extract user facts from the conversation turn (with image_path if images were attached)
+8. Emit `event: done`
 
 SSE (not NDJSON) because `EventSource` has auto-reconnect and better browser support. The discovery service processes everything non-streaming internally (tool loops need full responses), so there are no incremental tokens to stream.
 
@@ -341,7 +349,33 @@ Local-first voice input and output — no cloud APIs, no browser Web Speech API.
 - `voice_auto_send` — automatically send after transcription completes
 - `voice_auto_speak` — automatically speak assistant responses
 
-**Current flow:** Press mic button → record → release → transcribe → text in input → (auto-send or manual send) → response → (auto-speak or manual). Wake word detection is planned but not yet implemented — currently requires manual mic activation.
+**Current flow:** Press mic button → record → release → transcribe → text in input → (auto-send or manual send) → response → (auto-speak or manual). Wake word detection ("Computer") works in quiet environments with whisper `small` model but is blocked by conference mic AGC in noisy environments (TV). Push-to-talk is the reliable default.
+
+**Noise suppression:** Optional pre-processing via `noisereduce` before whisper. Converts to 16kHz WAV via ffmpeg, applies stationary noise reduction. Skipped for short clips (<3s) where noisereduce destroys speech. Config: `voice.noise_suppress` (default `true`). Disabled via config when the mic has built-in noise cancellation.
+
+## Images and Visual Memory
+
+Manifest supports image input for vision-capable models (qwen3.5:9b is natively multimodal). Users can paste, drag-drop, or click the image button to attach images to chat messages.
+
+**Image input flow:**
+1. User attaches image(s) via paste (Cmd+V), drag-drop, or file upload button
+2. Image appears as a thumbnail preview in the chat input — removable before sending
+3. On send, images are base64-encoded and included in the API request
+4. Images are saved to disk at `{db_dir}/images/{conv_id}_{msg}_{n}.jpg`
+5. Image metadata (count, paths) stored in the user message's `metadata` field
+6. Images passed through to the discovery tool bridge as Ollama `images` field
+7. The vision model (qwen3.5:9b) describes the image in its response
+
+**Visual memory:** Facts extracted from image-related conversations are linked to the source image via the `image_path` column in `user_facts`. When the user sends a photo with context like "This is my front door — remember this color for Sherwin Williams," the LLM describes the image, and the memory extractor saves facts with a reference to the saved image file.
+
+**API:**
+- `POST /v1/agent/chat` — accepts optional `images: string[]` (base64-encoded) alongside `message`
+- `GET /v1/agent/images/{filename}` — serves saved images from the images directory
+
+**Constraints:**
+- Max 5 images per message, max 10MB per image
+- Images saved as JPEG regardless of input format
+- Image serving endpoint validates paths to prevent directory traversal
 
 ### Conversation Management
 
