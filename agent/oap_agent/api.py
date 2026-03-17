@@ -724,20 +724,21 @@ async def chat(req: ChatRequest):
         # Check if Ollama is busy with a background task
         ollama_busy = _scheduler is not None and _scheduler.is_active()
 
-        if ollama_busy and conversational and _escalation_cfg:
-            # Escalate: send conversational request to big LLM while
-            # the background task keeps running on Ollama
-            log.info("Ollama busy — escalating conversational request to %s/%s",
+        if conversational and _escalation_cfg and _escalation_cfg.enabled:
+            # Always use big LLM for conversational — better quality,
+            # respects memory context, doesn't block Ollama
+            log.info("Conversational → big LLM (%s/%s)",
                      _escalation_cfg.provider, _escalation_cfg.model)
             try:
                 result = await execute_escalated(llm_messages, _escalation_cfg)
             except Exception:
                 result = None
             if result is None:
-                # Escalation failed — fall back to cancel + Ollama
-                log.warning("Escalation failed — cancelling task for Ollama")
-                await _scheduler.cancel_active()
-                await asyncio.sleep(0.5)
+                # Escalation failed — fall back to small LLM
+                log.warning("Escalation failed — falling back to Ollama")
+                if ollama_busy and _scheduler:
+                    await _scheduler.cancel_active()
+                    await asyncio.sleep(0.5)
                 try:
                     result = await execute_conversational(
                         discovery_url=_discovery_url,
