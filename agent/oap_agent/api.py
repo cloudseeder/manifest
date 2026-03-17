@@ -515,6 +515,10 @@ async def chat(req: ChatRequest):
             "No emojis."
         )
 
+    # Track memory relevance for routing decisions
+    _memory_max_sim = 0.0
+    _memory_has_images = False
+
     if settings.get("memory_enabled") == "true":
         from .memory import embed_query as _embed_query
 
@@ -619,6 +623,10 @@ async def chat(req: ChatRequest):
                 memory_parts.append("About the user:\n" + "\n".join(user_lines))
             if family_lines:
                 memory_parts.append("Family and pets (NOT the user):\n" + "\n".join(family_lines))
+            _memory_has_images = any(f.get("image_path") for f in facts)
+            if use_rag and facts:
+                _memory_max_sim = max((f.get("similarity", 0) for f in facts), default=0)
+
             if memory_parts:
                 preamble = (
                     "You have a personal memory of the user. These facts were learned "
@@ -740,27 +748,33 @@ async def chat(req: ChatRequest):
                 return
 
         # Route: conversational turns skip the tool bridge entirely.
-        # Fast path handles obvious cases (greetings, thanks, task nouns).
-        # Ambiguous messages go to the big LLM for classification.
-        fast_result = _is_conversational_fast(req.message)
-        if fast_result is not None:
-            conversational = fast_result
-        elif greeting or notif_query:
+        # Priority: (1) memory match → conversational, (2) fast regex,
+        # (3) big LLM classifier, (4) default to tools.
+        #
+        # Memory-first: if RAG found relevant facts with images or high
+        # similarity, the answer is likely in memory — go conversational
+        # to let the big LLM answer from context rather than wasting
+        # 50+ seconds on the tool bridge.
+        # Memory-first check: if the RAG results include image-linked
+        # facts, the user is likely asking about something they showed
+        # the system — answer from memory, don't waste time on tools.
+        memory_has_answer = False
+        if _memory_has_images:
+            memory_has_answer = True
+            log.info("Memory-first: image-linked facts in context — routing conversational")
+
+        if memory_has_answer:
             conversational = True
         else:
-            # Extract memory facts from the system prompt to help the
-            # classifier decide — if the answer is in memory, route
-            # conversational instead of searching for tools.
-            memory_hint = None
-            if llm_messages and llm_messages[0].get("role") == "system":
-                sys_content = llm_messages[0]["content"]
-                # Extract fact lines (start with "- ")
-                fact_lines = [l.strip() for l in sys_content.split("\n") if l.strip().startswith("- ")]
-                if fact_lines:
-                    memory_hint = "\n".join(fact_lines[:10])  # top 10 to keep it short
-            conversational = await _classify_intent(req.message, memory_context=memory_hint)
-            if conversational:
-                log.info("Big LLM classified as conversational: %r", req.message[:80])
+            fast_result = _is_conversational_fast(req.message)
+            if fast_result is not None:
+                conversational = fast_result
+            elif greeting or notif_query:
+                conversational = True
+            else:
+                conversational = await _classify_intent(req.message)
+                if conversational:
+                    log.info("Big LLM classified as conversational: %r", req.message[:80])
 
         # Check if Ollama is busy with a background task
         ollama_busy = _scheduler is not None and _scheduler.is_active()
