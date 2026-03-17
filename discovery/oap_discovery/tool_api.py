@@ -1072,7 +1072,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
         ollama_resp = {
             "message": cloud_result["message"],
             "oap_tools_injected": len(registry),
-            "oap_cloud_tools": True,
+            "oap_cloud_tools": bool(cloud_result.get("tool_executions")),
             "oap_usage": {
                 "model": _escalation_cfg.model,
                 "tokens_in": cloud_result.get("tokens_in", 0),
