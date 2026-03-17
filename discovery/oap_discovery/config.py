@@ -83,6 +83,7 @@ class ToolBridgeConfig:
     danger_will_robinson: bool = False  # set True to DISABLE sandbox — you've been warned
     sandbox_dir: str = "/tmp/oap-sandbox"
     timezone: str = "America/Los_Angeles"  # TZ for subprocess execution (date, etc.)
+    use_cloud_tools: bool = False  # route tool calling through big LLM instead of Ollama
 
 
 @dataclass

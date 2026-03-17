@@ -1026,6 +1026,88 @@ async def chat_proxy(req: ChatRequest) -> Any:
         *original_messages,
     ]
 
+    # Cloud tool bridge: route tool calling through Claude when configured.
+    # Discovery still finds manifests; Claude handles the tool call loop.
+    if bridge_cfg.use_cloud_tools and _escalation_cfg and _escalation_cfg.enabled and tools:
+        from .cloud_tool_bridge import execute_cloud_tool_loop
+        from .tool_executor import execute_tool_call, execute_exec_call
+
+        log.info("Cloud tool bridge: routing %d tool(s) to %s/%s",
+                 len(tools), _escalation_cfg.provider, _escalation_cfg.model)
+
+        _cloud_credentials = load_credentials(bridge_cfg.credentials_file)
+
+        async def _cloud_exec_tool(entry, arguments, **kw):
+            return await execute_tool_call(
+                entry.tool.function.name, arguments, registry,
+                credentials=_cloud_credentials,
+                http_timeout=bridge_cfg.http_timeout,
+                stdio_timeout=bridge_cfg.stdio_timeout,
+                max_output=bridge_cfg.max_tool_result,
+                escalation_available=True,
+            )
+
+        async def _cloud_exec_cmd(arguments, **kw):
+            cmd = arguments.get("command", "")
+            stdin = arguments.get("stdin")
+            return await execute_exec_call(
+                cmd, stdin_text=stdin,
+                stdio_timeout=bridge_cfg.stdio_timeout,
+                blocked_commands=bridge_cfg.blocked_commands,
+                escalation_available=True,
+            )
+
+        cloud_result = await execute_cloud_tool_loop(
+            escalation_cfg=_escalation_cfg,
+            system_prompt=system_content + usage_hint,
+            messages=original_messages,
+            tools=tools,
+            registry=registry,
+            max_rounds=max_rounds,
+            execute_tool_fn=_cloud_exec_tool,
+            execute_exec_fn=_cloud_exec_cmd,
+        )
+
+        # Build response compatible with the Ollama format
+        ollama_resp = {
+            "message": cloud_result["message"],
+            "oap_tools_injected": len(registry),
+            "oap_cloud_tools": True,
+            "oap_usage": {
+                "model": _escalation_cfg.model,
+                "tokens_in": cloud_result.get("tokens_in", 0),
+                "tokens_out": cloud_result.get("tokens_out", 0),
+                "rounds": len(cloud_result.get("tool_executions", [])) + 1,
+            },
+        }
+        if debug:
+            ollama_resp["oap_debug"] = {
+                "tools_discovered": list(registry.keys()),
+                "experience_cache": exp_cache_status or ("hit" if exp_cache_hit else "miss"),
+                "experience_fingerprint": exp_fingerprint,
+                "cloud_tools": True,
+                "rounds": [{
+                    "round": i + 1,
+                    "tool_executions": [cloud_result["tool_executions"][i]] if i < len(cloud_result.get("tool_executions", [])) else [],
+                } for i in range(len(cloud_result.get("tool_executions", [])))],
+            }
+
+        # Cache experience on success
+        if cloud_result.get("tool_executions") and exp_fingerprint and exp_intent_domain:
+            tools_called = {te["tool"] for te in cloud_result["tool_executions"]}
+            tools_had_errors = any("Error" in te.get("result", "") for te in cloud_result["tool_executions"])
+            if not tools_had_errors:
+                await _save_experience(
+                    exp_fingerprint, exp_intent_domain, last_user_msg, registry, tools_called,
+                )
+
+        if req.stream:
+            return StreamingResponse(
+                _stream_ollama_response(ollama_resp),
+                media_type="application/x-ndjson",
+            )
+        return ollama_resp
+
     # Token accounting across all rounds
     total_tokens_in = 0
     total_tokens_out = 0

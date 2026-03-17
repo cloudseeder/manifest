@@ -50,12 +50,15 @@ tool_bridge:
   timezone: "America/Los_Angeles"   # TZ for subprocess execution (date, etc.)
   # think_prefixes: [compute]    # fingerprint prefixes that get think=true for verification
   # escalate_prefixes: [compute, search, query]  # fingerprint prefixes routed to big LLM for final answer
+  # use_cloud_tools: true  # route ALL tool calling through big LLM (requires escalation)
 
-# Big LLM escalation — final reasoning step for complex queries.
-# Small LLM still handles discovery and tool execution.
+# Big LLM escalation — reasoning + tool calling for complex queries.
+# With use_cloud_tools: true, Claude handles ALL tool calls directly.
+# Without it, small LLM handles tool calls, big LLM only summarizes.
 # escalation:
 #   enabled: true
 #   provider: anthropic          # openai, anthropic, or googleai
 #   model: claude-sonnet-4-6
 #   timeout: 120
+#   max_tokens: 4096
 #   # api_key from OAP_ANTHROPIC_API_KEY env var (or OAP_ESCALATION_API_KEY)
