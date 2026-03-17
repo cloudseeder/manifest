@@ -343,7 +343,7 @@ _CLASSIFY_SYSTEM = (
 )
 
 
-async def _classify_intent(message: str) -> bool:
+async def _classify_intent(message: str, memory_context: str | None = None) -> bool:
     """Use the big LLM to classify intent. Returns True if conversational.
 
     Falls back to False (tools) on any failure — better to route to
@@ -353,11 +353,19 @@ async def _classify_intent(message: str) -> bool:
         # No big LLM available — fall back to regex heuristics
         return _is_conversational_fast(message) or False
 
+    user_content = message
+    if memory_context:
+        user_content = (
+            f"{message}\n\n[The user's memory contains these relevant facts:\n"
+            f"{memory_context}\n"
+            "If the answer is already in memory, classify as 'conversational'.]"
+        )
+
     try:
         result = await execute_escalated(
             [
                 {"role": "system", "content": _CLASSIFY_SYSTEM},
-                {"role": "user", "content": message},
+                {"role": "user", "content": user_content},
             ],
             _escalation_cfg,
         )
@@ -717,7 +725,17 @@ async def chat(req: ChatRequest):
         elif greeting or notif_query:
             conversational = True
         else:
-            conversational = await _classify_intent(req.message)
+            # Extract memory facts from the system prompt to help the
+            # classifier decide — if the answer is in memory, route
+            # conversational instead of searching for tools.
+            memory_hint = None
+            if llm_messages and llm_messages[0].get("role") == "system":
+                sys_content = llm_messages[0]["content"]
+                # Extract fact lines (start with "- ")
+                fact_lines = [l.strip() for l in sys_content.split("\n") if l.strip().startswith("- ")]
+                if fact_lines:
+                    memory_hint = "\n".join(fact_lines[:10])  # top 10 to keep it short
+            conversational = await _classify_intent(req.message, memory_context=memory_hint)
             if conversational:
                 log.info("Big LLM classified as conversational: %r", req.message[:80])
 
