@@ -511,9 +511,10 @@ async def chat(req: ChatRequest):
         use_rag = False
         rag_reason = "disabled"
 
-        # Only use RAG when there are enough facts to benefit from filtering.
+        # Use RAG when there are enough facts to benefit from filtering.
         # For short/generic messages (greetings, "thanks", "ok"), inject all
-        # facts so the companion feels like it knows the user.
+        # facts — but only up to MAX_INJECT_FACTS to avoid overrunning context.
+        MAX_INJECT_FACTS = 50  # ~500 tokens — safe for 4096 context
         msg_words = len(req.message.split())
         if total_facts > 30 and msg_words >= 4:
             query_vec = await _embed_query(_discovery_url, req.message)
@@ -522,9 +523,14 @@ async def chat(req: ChatRequest):
                 # Check if the query was too generic (low max similarity)
                 max_sim = facts[0].pop("_max_similarity", 0.0) if facts else 0.0
                 if max_sim < 0.55:
-                    # Query didn't meaningfully match anything — inject all
+                    # Query didn't meaningfully match anything — inject all (capped)
                     facts = _db.get_all_facts()
-                    rag_reason = f"generic query (max_sim={max_sim:.3f}), using all {len(facts)} facts"
+                    if len(facts) > MAX_INJECT_FACTS:
+                        # Too many to inject — use RAG top-k instead
+                        facts = _db.search_facts(query_vec, top_k=25, min_similarity=0.40)
+                        rag_reason = f"generic query (max_sim={max_sim:.3f}), too many facts ({total_facts}), RAG top 25"
+                    else:
+                        rag_reason = f"generic query (max_sim={max_sim:.3f}), using all {len(facts)} facts"
                 else:
                     use_rag = True
                     rag_reason = f"top_sim={max_sim:.3f}, selected {len(facts)}/{total_facts} facts"
@@ -536,11 +542,15 @@ async def chat(req: ChatRequest):
                             if uf["id"] not in embedded_ids:
                                 facts.append(uf)
             else:
-                # Embedding failed — fall back to all facts
+                # Embedding failed — fall back to all facts (capped)
                 facts = _db.get_all_facts()
-                rag_reason = "embed failed, using all facts"
+                if len(facts) > MAX_INJECT_FACTS:
+                    facts = facts[:MAX_INJECT_FACTS]
+                rag_reason = f"embed failed, using {len(facts)} facts"
         else:
             facts = _db.get_all_facts()
+            if len(facts) > MAX_INJECT_FACTS:
+                facts = facts[:MAX_INJECT_FACTS]
             if total_facts <= 15:
                 rag_reason = f"only {total_facts} facts, using all"
             else:
