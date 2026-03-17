@@ -170,6 +170,8 @@ def _inject_credentials(
             extra_headers = {header_name: key}
     elif auth_type == "bearer":
         extra_headers = {"Authorization": f"Bearer {key}"}
+    elif auth_type == "bot":
+        extra_headers = {"Authorization": f"Bot {key}"}
     else:
         return invoke_spec, {}
 
