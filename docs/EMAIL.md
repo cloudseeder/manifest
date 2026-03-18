@@ -98,6 +98,7 @@ Entry point: `oap-email-api` (:8305)
 
 | Action | Description |
 |--------|-------------|
+| **ask** | **Natural language question — scans, then returns recent mail for Claude to interpret** |
 | list | Search/filter cached messages (category, priority, query, since) |
 | get | Single message by ID |
 | thread | All messages in a thread |
@@ -108,6 +109,8 @@ Entry point: `oap-email-api` (:8305)
 | overrides_list | Show all sender overrides |
 | overrides_add | Add/update a sender override |
 | overrides_remove | Delete a sender override |
+
+`ask` is the primary action exposed by the manifest. The others are internal/REST API.
 
 ### REST Endpoints
 
@@ -191,9 +194,31 @@ The email scan runs via launchd (`com.oap.email-scan`), configured in `setup.sh`
 
 ## Manifest
 
-`discovery/manifests/oap-email.json` — auto-indexed by the discovery service on startup. Enables conversational email access:
+`discovery/manifests/oap-email.json` — auto-indexed by the discovery service on startup.
 
-- "Check my email" → list action
-- "Any urgent emails?" → list with priority=urgent
-- "Emails from Amy" → list with query=from:Amy
-- "Mark @facebook.com as noise" → overrides_add
+### Intent-First Design
+
+The manifest exposes a single `ask` action with one `question` parameter. The LLM passes natural language directly; the service handles the API complexity internally.
+
+```json
+{
+  "action": "ask",
+  "question": "anything urgent today?"
+}
+```
+
+The service always scans for new IMAP messages first, then returns up to 50 recent messages across all folders (not just INBOX — auto-filed messages are included). Claude interprets the question and filters/formats the response. No keyword parsing inside the service.
+
+**Example questions:**
+
+| What you say | What happens |
+|---|---|
+| "anything urgent today?" | scan + return today's mail, Claude filters urgent |
+| "emails from Amy" | scan + return recent mail, Claude filters by sender |
+| "what came in overnight?" | scan + return last 24h, Claude shows overnight window |
+| "anything about the invoice?" | scan + return recent mail, Claude searches for invoice |
+| "summarize today's email" | scan + return today's mail, Claude summarizes by priority |
+| "mark @facebook.com as noise" | overrides_add action |
+| "show sender overrides" | overrides_list action |
+
+**Why intent-first?** Operation-first APIs require the LLM to know API internals (which filters exist, what parameter names are). Intent-first APIs expose what you can *ask*, not what operations exist — the same principle that makes conversational interfaces work. Keyword matching inside the service has the same fragility as operation-first manifests: it's just the wrong layer for intelligence.
