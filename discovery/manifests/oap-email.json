@@ -1,29 +1,18 @@
 {
   "oap": "1.0",
   "name": "oap-email",
-  "description": "Search, read, and manage cached email. Use for 'check my email', 'any new messages?', 'emails from Jane', 'show urgent emails', 'what needs my attention?'. Messages are categorized (personal, machine, mailing-list, spam, offers) AND prioritized (urgent, important, informational, noise). For briefings, filter by priority='urgent,important'. For 'real emails', use category='personal'. Supports conversational override management: 'mark emails from joe@cpa.us as important', 'treat @facebook.com as noise'.",
+  "description": "Ask about your email in natural language. Pass any question about your inbox and get a direct answer — no need to know the API. Examples: 'anything urgent today?', 'anything important since yesterday?', 'emails from Amy', 'what came in overnight?', 'anything about the invoice?', 'what needs my attention?', 'show me this week's newsletters'. Also handles sender preferences: 'always treat @facebook.com as noise', 'mark emails from joe@cpa.us as important'.",
   "input": {
     "format": "application/json",
-    "description": "JSON with 'action' to select operation. Actions: 'scan' (fetch NEW messages from IMAP — no filters, always imports all new arrivals), 'list' (query already-classified messages — supports priority/category/since/query filters), 'summary' (counts by category and priority), 'get' (single message by id), 'thread' (conversation), 'classify' (re-run classifier on unclassified messages), 'overrides_add' (set sender category/priority override), 'overrides_list' (show all overrides), 'overrides_remove' (delete an override). For briefing tasks: call 'scan' first to import new messages, then call 'list' with priority='urgent,important' to retrieve them. The 'priority', 'category', 'since', and 'query' filters only work with the 'list' action — they are ignored by 'scan'.",
+    "description": "JSON with action='ask' and a 'question' field containing your natural language question about email.",
     "parameters": {
-      "action": {"type": "string", "description": "Operation: 'list', 'get', 'thread', 'summary', 'classify', 'scan', 'overrides_add', 'overrides_list', 'overrides_remove'", "required": true},
-      "id": {"type": "string", "description": "Message ID (for get action)", "required": false},
-      "thread_id": {"type": "string", "description": "Thread ID (for thread action)", "required": false},
-      "since": {"type": "string", "description": "ISO 8601 timestamp — only messages after this time", "required": false},
-      "limit": {"type": "integer", "description": "Max results (1-100, default 20)", "required": false},
-      "unread": {"type": "boolean", "description": "Only unread messages (default false)", "required": false},
-      "folder": {"type": "string", "description": "IMAP folder (default INBOX)", "required": false},
-      "query": {"type": "string", "description": "Search with OR support and field prefixes. Examples: 'from:amy@netgate.net', 'subject:invoice'. Prefixes: from/sender, to, subject, body.", "required": false},
-      "category": {"type": "string", "description": "Filter by category: 'personal', 'machine', 'mailing-list', 'spam', 'offers'. Omit for all.", "required": false},
-      "priority": {"type": "string", "description": "Filter by priority: 'urgent', 'important', 'informational', 'noise'. Comma-separated for multiple: 'urgent,important'. Use 'urgent,important' for briefings.", "required": false},
-      "override_pattern": {"type": "string", "description": "Email address or @domain for override actions (e.g. 'joe@cpa.us' or '@facebook.com')", "required": false},
-      "override_category": {"type": "string", "description": "Category to force for this sender (personal, machine, etc.)", "required": false},
-      "override_priority": {"type": "string", "description": "Priority to force for this sender (urgent, important, informational, noise)", "required": false}
+      "action": {"type": "string", "description": "Always 'ask'", "required": true},
+      "question": {"type": "string", "description": "Your natural language question about email. Time expressions (today, yesterday, overnight, this week), sender filters (from Amy), content search (about invoice), and priority queries (anything urgent) are all understood.", "required": true}
     }
   },
   "output": {
     "format": "application/json",
-    "description": "Message objects with category, priority, sender info, subject, snippet. Summary returns counts and senders. Override actions return the override record."
+    "description": "Messages matching your question with sender, subject, priority, and snippet. Also reports how many new messages were scanned from IMAP."
   },
   "invoke": {
     "method": "POST",

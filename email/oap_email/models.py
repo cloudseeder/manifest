@@ -56,7 +56,8 @@ class EmailSummary(BaseModel):
 
 class DispatchRequest(BaseModel):
     """Single-endpoint dispatcher for OAP tool bridge."""
-    action: str = Field(..., description="Operation: list, get, thread, summary, classify, overrides_list, overrides_add, overrides_remove")
+    action: str = Field(..., description="Operation: ask, list, get, thread, summary, classify, overrides_list, overrides_add, overrides_remove")
+    question: str | None = None  # natural language question for 'ask' action
     id: str | None = None
     thread_id: str | None = None
     since: str | None = None
