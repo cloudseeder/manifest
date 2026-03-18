@@ -159,7 +159,7 @@ class EmailDB:
 
     def list_messages(
         self,
-        folder: str = "INBOX",
+        folder: str | None = "INBOX",
         since: str | None = None,
         unread: bool = False,
         query: str | None = None,
@@ -167,8 +167,11 @@ class EmailDB:
         priority: str | None = None,
         limit: int = 20,
     ) -> list[dict]:
-        conditions = ["folder = ?"]
-        params: list = [folder]
+        conditions: list[str] = []
+        params: list = []
+        if folder:
+            conditions.append("folder = ?")
+            params.append(folder)
         if since:
             # Normalize Z suffix to +00:00 for consistent string comparison
             if since.endswith("Z"):

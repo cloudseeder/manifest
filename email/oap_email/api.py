@@ -400,14 +400,16 @@ async def dispatch(req: DispatchRequest):
         # Scan for new messages, then list with parsed filters
         scan_result = await scan()
         filters = _parse_question(question)
+        log.info("Ask filters: priority=%s since=%s query=%s category=%s",
+                 filters.get('priority'), filters.get('since'), filters.get('query'), filters.get('category'))
         list_result = await list_messages(
-            folder=req.folder,
+            folder=None,  # search all folders (auto-filed emails live outside INBOX)
             since=filters.get('since'),
             unread=filters.get('unread', False),
             query=filters.get('query'),
             category=filters.get('category'),
             priority=filters.get('priority'),
-            limit=req.limit,
+            limit=50,  # higher default for ask — users expect to see everything
             _skip_default_since=True,
         )
         log.info("Ask → scanned=%d found=%d", scan_result.get("scanned", 0), list_result.get("total", 0))
