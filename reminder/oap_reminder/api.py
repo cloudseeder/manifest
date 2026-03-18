@@ -144,7 +144,12 @@ async def dispatch(body: dict):
     action = (body.pop("action", None) or body.pop("function", None) or "create").lower().strip()
     log.info("Dispatch action=%r params=%r", action, {k: v for k, v in body.items() if k != "notes"})
 
-    if action in ("create", "add", "set", "new"):
+    if action in ("ask", "query", "question"):
+        question = body.get("question", "")
+        log.info("Dispatch ask: %r", question)
+        reminders, total = _db.list_all(status="pending", limit=200)
+        return {"question": question, "reminders": reminders, "total": total}
+    elif action in ("create", "add", "set", "new"):
         validated = ReminderCreate(**body)
         return _db.create(
             title=validated.title,

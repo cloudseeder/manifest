@@ -1,32 +1,29 @@
 {
   "oap": "1.0",
   "name": "oap-reminder",
-  "description": "Create, list, complete, and manage personal reminders with due dates, recurrence, and places. Use for requests like 'remind me to call the dentist Friday', 'what reminders are due today', 'next time I go to the store remind me to buy milk', 'I'm heading to Costco — any reminders?'. Supports one-time and recurring reminders (daily, weekly, monthly, yearly) and place-based reminders that surface when the user says they're going somewhere.",
+  "description": "Ask questions about your reminders or manage them in natural language. Questions: 'anything due today?', 'what's coming up this week?', 'I'm heading to the store — any reminders?', 'do I have anything for Michelle's?', 'show me everything pending'. Create: 'remind me to call the dentist Friday at 9am', 'next time I go to Costco remind me to get paper towels' (place-based), 'remind me to pay rent monthly'. Modify: 'mark call dentist as done', 'delete the dentist reminder', 'reschedule dentist to next Monday'.",
   "input": {
     "format": "application/json",
-    "description": "JSON with 'action' to select operation and additional parameters. Actions: 'due' (DEFAULT — reminders due today or overdue; supports 'after' and 'before' params for date ranges like 'this week' or 'next 30 days'), 'place' (reminders for a location — use when user says 'I'm going to [place]' or 'heading to [place]'), 'create' (new reminder — set 'place' for location-based, 'due_date' for time-based, or both), 'list' (admin search across ALL reminders including future — only use when explicitly asked to see everything), 'complete' (mark done by id OR title — use title when the user refers to a reminder by name), 'delete' (remove by id or title), 'get' (fetch by id or title), 'cleanup' (purge old completed).",
+    "description": "Use action='ask' for any question about reminders — returns all pending reminders for Claude to interpret. Use 'create', 'complete', 'delete', or 'update' for changes.",
     "parameters": {
-      "action": {"type": "string", "description": "Operation: 'due' (today's and overdue — use by default), 'place' (reminders for a location), 'create', 'list' (all reminders — only when asked for everything), 'complete', 'delete', 'get', 'cleanup'", "required": true},
-      "title": {"type": "string", "description": "Reminder title. Required for create. Also used by complete/delete/get to find a reminder by name when id is not known.", "required": false},
+      "action": {"type": "string", "description": "ask (questions about reminders), create (new reminder), complete (mark done), delete (remove), update (modify), cleanup (purge old completed)", "required": true},
+      "question": {"type": "string", "description": "For ask action — your natural language question. All pending reminders are returned for Claude to answer.", "required": false},
+      "title": {"type": "string", "description": "Reminder title. Required for create. Also used by complete/delete/update to find a reminder by name.", "required": false},
       "notes": {"type": "string", "description": "Additional details or context", "required": false},
-      "due_date": {"type": "string", "description": "Due date in YYYY-MM-DD format. For 'list' action, filters to reminders on that exact date. For 'create', sets the due date.", "required": false},
-      "before": {"type": "string", "description": "End date for 'due' action range query (YYYY-MM-DD, inclusive). Use with 'after' for date ranges like 'this week' or 'next 7 days'.", "required": false},
-      "after": {"type": "string", "description": "Start date for 'due' action range query (YYYY-MM-DD, inclusive). E.g. after=today + before=end-of-week for 'reminders due this week'.", "required": false},
-      "due_time": {"type": "string", "description": "Due time in HH:MM format or '5 PM' style", "required": false},
+      "due_date": {"type": "string", "description": "Due date in YYYY-MM-DD format (or 'today', 'tomorrow')", "required": false},
+      "due_time": {"type": "string", "description": "Due time in HH:MM or '5 PM' format", "required": false},
       "recurring": {"type": "string", "description": "Recurrence: 'daily', 'weekly', 'monthly', or 'yearly'", "required": false},
-      "place": {"type": "string", "description": "Location for place-based reminders (e.g. 'store', 'costco', 'Michelle\\'s'). Use with 'create' to set a place trigger, or with 'place' action to query reminders for a location.", "required": false},
-      "id": {"type": "integer", "description": "Reminder ID (for complete, delete, get). Not needed if title is provided.", "required": false},
-      "status": {"type": "string", "description": "Filter by status for list: 'pending' or 'completed'", "required": false}
+      "place": {"type": "string", "description": "Location for place-based reminders (e.g. 'store', 'Costco', 'Michelle\\'s'). Set on create to trigger when user goes there.", "required": false},
+      "id": {"type": "integer", "description": "Reminder ID (for complete, delete, update). Not needed if title is provided.", "required": false}
     }
   },
   "output": {
     "format": "application/json",
-    "description": "JSON reminder object with id, title, notes, due_date, due_time, recurring, place, status (pending/completed), created_at, completed_at. List/due/place actions return {reminders: [...], total: N}."
+    "description": "For ask: {question, reminders: [...], total: N} — all pending reminders. For create/complete/delete/update: reminder object with id, title, notes, due_date, due_time, recurring, place, status."
   },
   "invoke": {
     "method": "POST",
     "url": "http://localhost:8304/api"
   },
-  "tags": ["reminder", "todo", "schedule", "recurring", "place", "location"],
-  "usage": "POST /api {\"action\": \"create\", \"title\": \"Call dentist\", \"due_date\": \"2026-03-10\", \"due_time\": \"09:00\"} → creates reminder; POST /api {\"action\": \"create\", \"title\": \"Buy milk\", \"place\": \"store\"} → place-based reminder; POST /api {\"action\": \"place\", \"place\": \"store\"} → reminders for the store; POST /api {\"action\": \"due\"} → list today's reminders; POST /api {\"action\": \"complete\", \"title\": \"Call dentist\"} → mark done by title; POST /api {\"action\": \"complete\", \"id\": 1} → mark done by id"
+  "tags": ["reminder", "todo", "schedule", "recurring", "place", "location"]
 }

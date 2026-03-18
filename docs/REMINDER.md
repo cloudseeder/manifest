@@ -21,15 +21,18 @@ Entry point: `oap-reminder-api` (:8304)
 
 | Action | Description |
 |--------|-------------|
-| due | **Default** — reminders due today or overdue. Supports `after`/`before` for date ranges. |
-| place | Reminders for a location (case-insensitive, strips articles) |
+| **ask** | **Natural language question — returns all pending reminders for Claude to interpret** |
 | create | New reminder with title, optional due_date, due_time, recurring, place |
 | complete | Mark done by ID or title. Auto-creates next occurrence for recurring. |
 | delete | Remove by ID or title |
-| get | Fetch by ID or title |
-| list | All reminders (admin — only when asked for everything) |
 | update | Modify fields by ID or title |
 | cleanup | Purge old completed reminders |
+| due | Date-range query — reminders due today/overdue, supports `after`/`before` |
+| place | Reminders for a location (internal — `ask` covers this) |
+| list | All reminders by status (internal — `ask` covers this) |
+| get | Fetch single by ID or title (internal) |
+
+`ask` is the primary read interface exposed by the manifest. `due`, `place`, `list`, and `get` remain available as internal REST endpoints.
 
 ### REST Endpoints
 
@@ -116,14 +119,32 @@ The discovery system prompt includes: "NEVER complete, delete, or modify reminde
 
 ## Manifest
 
-`discovery/manifests/oap-reminder.json` — auto-indexed by discovery on startup. Enables conversational reminder management:
+`discovery/manifests/oap-reminder.json` — auto-indexed by discovery on startup.
 
-- "Remind me to call the dentist Friday" → create with due_date
-- "Next time I go to Costco remind me to get dog food" → create with place
-- "What reminders are due this week?" → due with date range
-- "I'm heading to the store" → place query
-- "Complete the NetGate Visa reminder" → complete by title
-- "Show me reminders due next month" → due with after/before
+### Intent-First Design
+
+Same principle as the email manifest: expose what you can *ask*, not what operations exist. The manifest has one primary read action (`ask`) and explicit write actions (`create`, `complete`, `delete`, `update`).
+
+**Reading** — pass any question, get all pending reminders back, Claude answers:
+
+```json
+{"action": "ask", "question": "anything due today?"}
+{"action": "ask", "question": "I'm heading to the store"}
+{"action": "ask", "question": "what's coming up this week?"}
+{"action": "ask", "question": "do I have anything for Michelle's?"}
+```
+
+**Writing** — Claude derives structured params from natural language and calls the right action:
+
+```json
+{"action": "create", "title": "Call dentist", "due_date": "2026-03-20", "due_time": "09:00"}
+{"action": "create", "title": "Get paper towels", "place": "Costco"}
+{"action": "complete", "title": "Call dentist"}
+{"action": "delete", "title": "Old reminder"}
+{"action": "update", "title": "Call dentist", "due_date": "2026-03-27"}
+```
+
+Read operations don't need filters — all 200 pending reminders fit easily in context, and Claude can answer any question about them without the service needing to parse intent.
 
 ## Cleanup
 
