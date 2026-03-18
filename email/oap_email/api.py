@@ -302,12 +302,13 @@ def _parse_question(question: str) -> dict:
     filters: dict = {}
 
     # Priority detection
-    priority_words = [
-        'urgent', 'important', 'needs attention', 'what matters',
-        'briefing', "what's new", 'anything new', 'anything important',
-        'anything urgent', 'what needs', 'priority', 'critical',
+    priority_phrases = [
+        'anything urgent', 'anything important', 'needs attention',
+        'what matters', 'what needs my attention', 'urgent emails',
+        'important emails', 'briefing', 'what needs',
     ]
-    if any(w in q for w in priority_words):
+    priority_words = ['urgent', 'critical']
+    if any(p in q for p in priority_phrases) or any(w in q.split() for w in priority_words):
         filters['priority'] = 'urgent,important'
 
     # Time detection
