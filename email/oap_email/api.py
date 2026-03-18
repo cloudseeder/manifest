@@ -292,89 +292,6 @@ async def summary(since: str | None = None):
 
 
 # ---------------------------------------------------------------------------
-# Intent parsing — natural language → list filters
-# ---------------------------------------------------------------------------
-
-def _parse_question(question: str) -> dict:
-    """Extract list-action filter params from a natural language email question."""
-    import re
-    q = question.lower()
-    filters: dict = {}
-
-    # Priority detection
-    priority_phrases = [
-        'anything urgent', 'anything important', 'needs attention',
-        'what matters', 'what needs my attention', 'urgent emails',
-        'important emails', 'briefing', 'what needs',
-    ]
-    priority_words = ['urgent', 'critical']
-    if any(p in q for p in priority_phrases) or any(w in q.split() for w in priority_words):
-        filters['priority'] = 'urgent,important'
-
-    # Time detection
-    now = datetime.now(timezone.utc)
-    if 'this morning' in q:
-        filters['since'] = now.replace(hour=5, minute=0, second=0, microsecond=0).isoformat()
-    elif 'overnight' in q or 'while i was asleep' in q or 'while i slept' in q:
-        yesterday = now - timedelta(days=1)
-        filters['since'] = yesterday.replace(hour=22, minute=0, second=0, microsecond=0).isoformat()
-    elif 'today' in q:
-        filters['since'] = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    elif 'yesterday' in q or 'last 24' in q or 'past 24' in q or '24 hours' in q:
-        filters['since'] = (now - timedelta(hours=24)).isoformat()
-    elif 'this week' in q or 'past week' in q:
-        filters['since'] = (now - timedelta(days=7)).isoformat()
-    elif 'last hour' in q or 'past hour' in q:
-        filters['since'] = (now - timedelta(hours=1)).isoformat()
-    else:
-        # Default: last 24 hours
-        filters['since'] = (now - timedelta(hours=24)).isoformat()
-
-    # Sender detection: "from Amy", "from joe@company.com", "emails from X"
-    from_match = re.search(r'\bfrom\s+([\w@.\-]+)', q)
-    if from_match:
-        filters['query'] = f"from:{from_match.group(1)}"
-
-    # Content/subject search: "about X", "subject X", "regarding X"
-    if not filters.get('query'):
-        about_match = re.search(
-            r'\b(?:about|subject|regarding|mention(?:ing)?)\s+([\w][\w\s]{1,30}?)(?=\s+(?:since|from|today|yesterday|this|last|in|the)|\?|$)',
-            q,
-        )
-        if about_match:
-            filters['query'] = about_match.group(1).strip()
-
-    # Category detection
-    if any(w in q for w in ['personal', 'real email', 'not machine', 'not automated']):
-        filters['category'] = 'personal'
-    elif any(w in q for w in ['newsletter', 'mailing list', 'subscri']):
-        filters['category'] = 'mailing-list'
-
-    return filters
-
-
-def _parse_override(question: str) -> dict | None:
-    """Detect sender override intent: 'mark @facebook.com as noise'."""
-    import re
-    override_match = re.search(
-        r'(?:mark|treat|always\s+(?:mark|treat))\s+(?:emails?\s+)?(?:from\s+)?([\w@.\-]+)\s+as\s+'
-        r'(urgent|important|informational|noise|personal|machine|mailing-list|spam|offers)',
-        question.lower(),
-    )
-    if not override_match:
-        return None
-    pattern = override_match.group(1)
-    value = override_match.group(2)
-    priorities = {'urgent', 'important', 'informational', 'noise'}
-    result: dict = {'pattern': pattern}
-    if value in priorities:
-        result['priority'] = value
-    else:
-        result['category'] = value
-    return result
-
-
-# ---------------------------------------------------------------------------
 # Dispatch — single endpoint for OAP tool bridge
 # ---------------------------------------------------------------------------
 
@@ -391,26 +308,13 @@ async def dispatch(req: DispatchRequest):
             raise HTTPException(status_code=400, detail="question required for ask action")
         log.info("Dispatch ask: %r", question)
 
-        # Check for override intent first
-        override = _parse_override(question)
-        if override:
-            result = _db.add_override(override['pattern'], override.get('category'), override.get('priority'))
-            log.info("Ask → override added: %s", override)
-            return result
-
-        # Scan for new messages, then list with parsed filters
+        # Scan for new messages, then return recent emails — let Claude interpret the question
         scan_result = await scan()
-        filters = _parse_question(question)
-        log.info("Ask filters: priority=%s since=%s query=%s category=%s",
-                 filters.get('priority'), filters.get('since'), filters.get('query'), filters.get('category'))
+        since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
         list_result = await list_messages(
-            folder=None,  # search all folders (auto-filed emails live outside INBOX)
-            since=filters.get('since'),
-            unread=filters.get('unread', False),
-            query=filters.get('query'),
-            category=filters.get('category'),
-            priority=filters.get('priority'),
-            limit=50,  # higher default for ask — users expect to see everything
+            folder=None,
+            since=since,
+            limit=50,
             _skip_default_since=True,
         )
         log.info("Ask → scanned=%d found=%d", scan_result.get("scanned", 0), list_result.get("total", 0))
