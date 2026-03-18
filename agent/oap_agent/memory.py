@@ -47,7 +47,10 @@ EXTRACTION_SYSTEM = (
     "(2) ephemeral actions (\"ran a script\", \"asked a question\"), "
     "(3) meta-observations about the conversation itself "
     "(\"wants to share info\", \"is being friendly\"), "
-    "(4) generic knowledge. "
+    "(4) generic knowledge, "
+    "(5) reminders, tasks, or shopping list items — these belong in the reminder service, "
+    "not memory (e.g. do NOT extract \"wants a reminder to buy butter\", "
+    "\"needs laundry soap\", \"has a dentist appointment Friday\"). "
     "If a new fact is essentially the same as an existing one, do NOT include it. "
     "If there is nothing to extract, return {\"facts\": []}."
 )
