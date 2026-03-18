@@ -1224,15 +1224,7 @@ async def trigger_task(task_id: str):
 
 
 def _build_task_prompt(task: dict) -> str:
-    """Prepend last-run timestamp to the task prompt for dedup."""
-    prompt = task["prompt"]
-    if _db is None:
-        return prompt
-    last_run = _db.get_last_successful_run(task["id"])
-    if last_run and last_run.get("finished_at"):
-        prompt = f"[Only include new information since {last_run['finished_at']}]\n{prompt}"
-        log.debug("Injected last-run timestamp %s into task %s", last_run["finished_at"], task["id"])
-    return prompt
+    return task["prompt"]
 
 
 async def _run_task_background(task: dict, run_id: str, prompt: str) -> None:
