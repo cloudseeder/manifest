@@ -79,6 +79,55 @@ class EmailDB:
             );
         """)
         self.conn.commit()
+        # Manager tables
+        self.conn.executescript("""
+            CREATE TABLE IF NOT EXISTS email_preferences (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                pattern      TEXT NOT NULL UNIQUE,
+                action       TEXT NOT NULL,
+                condition    TEXT,
+                confidence   REAL NOT NULL DEFAULT 1.0,
+                created_at   TEXT NOT NULL,
+                last_applied TEXT,
+                apply_count  INTEGER NOT NULL DEFAULT 0,
+                source       TEXT NOT NULL DEFAULT 'explicit'
+            );
+
+            CREATE TABLE IF NOT EXISTS email_drafts (
+                id           TEXT PRIMARY KEY,
+                message_id   TEXT NOT NULL,
+                thread_id    TEXT,
+                draft_body   TEXT NOT NULL,
+                draft_subject TEXT NOT NULL,
+                to_addr      TEXT NOT NULL,
+                status       TEXT NOT NULL DEFAULT 'pending',
+                created_at   TEXT NOT NULL,
+                reviewed_at  TEXT,
+                sent_at      TEXT,
+                notes        TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS sender_relationships (
+                email              TEXT PRIMARY KEY,
+                name               TEXT,
+                first_seen         TEXT NOT NULL,
+                last_seen          TEXT NOT NULL,
+                message_count      INTEGER NOT NULL DEFAULT 1,
+                reply_count        INTEGER NOT NULL DEFAULT 0,
+                notes              TEXT,
+                updated_at         TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS management_log (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id    TEXT NOT NULL,
+                action        TEXT NOT NULL,
+                reason        TEXT NOT NULL,
+                preference_id INTEGER,
+                created_at    TEXT NOT NULL
+            );
+        """)
+        self.conn.commit()
         # Normalize received_at to UTC (+00:00) for consistent string comparison
         self._normalize_timestamps()
 
@@ -467,6 +516,178 @@ class EmailDB:
             return "1=1", []
 
         return "(" + " OR ".join(or_clauses) + ")", params
+
+    # ------------------------------------------------------------------
+    # Manager — preferences, relationships, log, drafts
+    # ------------------------------------------------------------------
+
+    def add_preference(self, pattern: str, action: str, condition: dict | None = None, source: str = "explicit") -> dict:
+        now = _now()
+        pattern = pattern.lower().strip()
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO email_preferences (pattern, action, condition, source, created_at) "
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(pattern) DO UPDATE SET action=excluded.action, condition=excluded.condition, source=excluded.source",
+                (pattern, action, json.dumps(condition) if condition else None, source, now),
+            )
+            self.conn.commit()
+        row = self.conn.execute(
+            "SELECT * FROM email_preferences WHERE pattern = ?", (pattern,)
+        ).fetchone()
+        return dict(row)
+
+    def list_preferences(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM email_preferences ORDER BY pattern"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def remove_preference(self, pattern: str) -> bool:
+        with self._lock:
+            cur = self.conn.execute(
+                "DELETE FROM email_preferences WHERE pattern = ?", (pattern.lower().strip(),)
+            )
+            self.conn.commit()
+        return cur.rowcount > 0
+
+    def get_matching_preference(self, from_email: str, category: str | None = None) -> dict | None:
+        """Find the best matching preference: exact email > @domain > category:X."""
+        email_lc = (from_email or "").lower()
+        # Exact email match
+        row = self.conn.execute(
+            "SELECT * FROM email_preferences WHERE pattern = ?", (email_lc,)
+        ).fetchone()
+        if row:
+            return dict(row)
+        # Domain match
+        if "@" in email_lc:
+            domain = "@" + email_lc.split("@", 1)[1]
+            row = self.conn.execute(
+                "SELECT * FROM email_preferences WHERE pattern = ?", (domain,)
+            ).fetchone()
+            if row:
+                return dict(row)
+        # Category match
+        if category:
+            row = self.conn.execute(
+                "SELECT * FROM email_preferences WHERE pattern = ?", (f"category:{category.lower()}",)
+            ).fetchone()
+            if row:
+                return dict(row)
+        return None
+
+    def update_sender_relationship(self, email_addr: str, name: str | None) -> None:
+        now = _now()
+        email_lc = (email_addr or "").lower().strip()
+        if not email_lc:
+            return
+        with self._lock:
+            existing = self.conn.execute(
+                "SELECT message_count FROM sender_relationships WHERE email = ?", (email_lc,)
+            ).fetchone()
+            if existing:
+                self.conn.execute(
+                    "UPDATE sender_relationships SET name=COALESCE(?, name), last_seen=?, "
+                    "message_count=message_count+1, updated_at=? WHERE email=?",
+                    (name, now, now, email_lc),
+                )
+            else:
+                self.conn.execute(
+                    "INSERT INTO sender_relationships (email, name, first_seen, last_seen, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (email_lc, name, now, now, now),
+                )
+            self.conn.commit()
+
+    def list_relationships(self, limit: int = 50) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM sender_relationships ORDER BY last_seen DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def log_action(self, message_id: str, action: str, reason: str, preference_id: int | None = None) -> None:
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO management_log (message_id, action, reason, preference_id, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (message_id, action, reason, preference_id, _now()),
+            )
+            if preference_id is not None:
+                self.conn.execute(
+                    "UPDATE email_preferences SET last_applied=?, apply_count=apply_count+1 WHERE id=?",
+                    (_now(), preference_id),
+                )
+            self.conn.commit()
+
+    def list_log(self, limit: int = 50) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT l.*, m.subject, m.from_name, m.from_email "
+            "FROM management_log l "
+            "LEFT JOIN messages m ON l.message_id = m.id "
+            "ORDER BY l.created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def add_draft(self, message_id: str, thread_id: str | None, draft_body: str,
+                  draft_subject: str, to_addr: dict, notes: str | None = None) -> dict:
+        import uuid
+        draft_id = str(uuid.uuid4())
+        now = _now()
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO email_drafts "
+                "(id, message_id, thread_id, draft_body, draft_subject, to_addr, notes, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (draft_id, message_id, thread_id, draft_body, draft_subject,
+                 json.dumps(to_addr), notes, now),
+            )
+            self.conn.commit()
+        row = self.conn.execute(
+            "SELECT * FROM email_drafts WHERE id = ?", (draft_id,)
+        ).fetchone()
+        return dict(row)
+
+    def list_drafts(self, status: str = "pending") -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT d.*, m.subject as orig_subject, m.from_name, m.from_email "
+            "FROM email_drafts d "
+            "LEFT JOIN messages m ON d.message_id = m.id "
+            "WHERE d.status = ? ORDER BY d.created_at DESC",
+            (status,),
+        ).fetchall()
+        results = []
+        for r in rows:
+            d = dict(r)
+            if d.get("to_addr"):
+                try:
+                    d["to_addr"] = json.loads(d["to_addr"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            results.append(d)
+        return results
+
+    def update_draft_status(self, draft_id: str, status: str) -> dict | None:
+        now = _now()
+        with self._lock:
+            self.conn.execute(
+                "UPDATE email_drafts SET status=?, reviewed_at=? WHERE id=?",
+                (status, now, draft_id),
+            )
+            self.conn.commit()
+        row = self.conn.execute(
+            "SELECT * FROM email_drafts WHERE id = ?", (draft_id,)
+        ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        if d.get("to_addr"):
+            try:
+                d["to_addr"] = json.loads(d["to_addr"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return d
 
     def _decode(self, row: dict) -> dict:
         for field in ("to_addrs", "cc_addrs", "attachments"):

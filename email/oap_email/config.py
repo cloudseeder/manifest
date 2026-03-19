@@ -107,11 +107,25 @@ class AutoFileConfig:
 
 
 @dataclass
+class ManagerConfig:
+    enabled: bool = False
+    archive_enabled: bool = True
+    unsubscribe_enabled: bool = True   # Phase 2
+    draft_reply_enabled: bool = False  # Phase 3
+    learning_enabled: bool = True
+    archive_folder: str = "Archive"
+    draft_reply_categories: list[str] = field(default_factory=lambda: ["personal"])
+    draft_reply_priorities: list[str] = field(default_factory=lambda: ["urgent", "important"])
+    discovery_url: str = "http://localhost:8300"
+
+
+@dataclass
 class Config:
     imap: IMAPConfig = field(default_factory=IMAPConfig)
     classifier: ClassifierConfig = field(default_factory=ClassifierConfig)
     auto_file: AutoFileConfig = field(default_factory=AutoFileConfig)
     escalation: EscalationConfig = field(default_factory=EscalationConfig)
+    manager: ManagerConfig = field(default_factory=ManagerConfig)
     db_path: str = "oap_email.db"
     host: str = "127.0.0.1"
     port: int = 8305
@@ -189,6 +203,16 @@ def load_config(path: str | None = None) -> Config:
         cfg.auto_file.enabled = af.get("enabled", cfg.auto_file.enabled)
         if "folders" in af:
             cfg.auto_file.folders.update(af["folders"])
+
+        # Manager
+        mg = raw.get("manager", {})
+        cfg.manager.enabled = mg.get("enabled", cfg.manager.enabled)
+        cfg.manager.archive_enabled = mg.get("archive_enabled", cfg.manager.archive_enabled)
+        cfg.manager.unsubscribe_enabled = mg.get("unsubscribe_enabled", cfg.manager.unsubscribe_enabled)
+        cfg.manager.draft_reply_enabled = mg.get("draft_reply_enabled", cfg.manager.draft_reply_enabled)
+        cfg.manager.learning_enabled = mg.get("learning_enabled", cfg.manager.learning_enabled)
+        cfg.manager.archive_folder = mg.get("archive_folder", cfg.manager.archive_folder)
+        cfg.manager.discovery_url = mg.get("discovery_url", cfg.manager.discovery_url)
 
         # Resolve relative DB path against config file directory
         db_path = Path(cfg.db_path)

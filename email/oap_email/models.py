@@ -71,3 +71,8 @@ class DispatchRequest(BaseModel):
     override_pattern: str | None = None  # email address or @domain
     override_category: str | None = None
     override_priority: str | None = None
+    # Manager preferences
+    pattern: str | None = None           # preference pattern (email, @domain, category:X)
+    manager_action: str | None = None    # archive | unsubscribe | ignore | flag | draft_reply
+    # Drafts
+    draft_id: str | None = None

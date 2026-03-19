@@ -377,6 +377,64 @@ async def dispatch(req: DispatchRequest):
         if not removed:
             raise HTTPException(status_code=404, detail="Override not found")
         return {"removed": req.override_pattern}
+    # ------------------------------------------------------------------
+    # Manager actions
+    # ------------------------------------------------------------------
+    elif action == "manage":
+        from .manager import run_manage
+        result = await run_manage(_db, _cfg)
+        return result
+
+    elif action == "preferences_list":
+        return {"preferences": _db.list_preferences()}
+
+    elif action in ("preferences_add", "preference_add"):
+        pattern = req.pattern or req.override_pattern or ""
+        act = req.manager_action or ""
+        if not pattern or not act:
+            raise HTTPException(status_code=400, detail="'pattern' and 'manager_action' required")
+        valid_actions = ("archive", "unsubscribe", "ignore", "flag", "draft_reply")
+        if act not in valid_actions:
+            raise HTTPException(status_code=400, detail=f"manager_action must be one of {valid_actions}")
+        pref = _db.add_preference(pattern, act)
+        return pref
+
+    elif action in ("preferences_remove", "preference_remove"):
+        pattern = req.pattern or req.override_pattern or ""
+        if not pattern:
+            raise HTTPException(status_code=400, detail="'pattern' required")
+        removed = _db.remove_preference(pattern)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Preference not found")
+        return {"removed": pattern}
+
+    elif action in ("relationships_list", "relationships"):
+        return {"relationships": _db.list_relationships(limit=req.limit)}
+
+    elif action in ("manager_log", "log", "management_log"):
+        return {"log": _db.list_log(limit=req.limit)}
+
+    elif action == "drafts_list":
+        return {"drafts": _db.list_drafts(status="pending")}
+
+    elif action == "drafts_approve":
+        draft_id = req.draft_id or req.id
+        if not draft_id:
+            raise HTTPException(status_code=400, detail="'draft_id' required")
+        draft = _db.update_draft_status(draft_id, "approved")
+        if not draft:
+            raise HTTPException(status_code=404, detail="Draft not found")
+        return draft
+
+    elif action == "drafts_reject":
+        draft_id = req.draft_id or req.id
+        if not draft_id:
+            raise HTTPException(status_code=400, detail="'draft_id' required")
+        draft = _db.update_draft_status(draft_id, "rejected")
+        if not draft:
+            raise HTTPException(status_code=404, detail="Draft not found")
+        return draft
+
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
 
