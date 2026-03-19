@@ -91,6 +91,7 @@ async def scan():
                 has_attachments=msg["has_attachments"],
                 attachments=msg["attachments"],
                 uid=msg["uid"],
+                list_unsubscribe=msg.get("list_unsubscribe", ""),
             )
         total += len(messages)
 

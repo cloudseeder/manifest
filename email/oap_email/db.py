@@ -79,6 +79,9 @@ class EmailDB:
             );
         """)
         self.conn.commit()
+        if "list_unsubscribe" not in cols:
+            self.conn.execute("ALTER TABLE messages ADD COLUMN list_unsubscribe TEXT")
+            self.conn.commit()
         # Manager tables
         self.conn.executescript("""
             CREATE TABLE IF NOT EXISTS email_preferences (
@@ -182,6 +185,7 @@ class EmailDB:
         has_attachments: bool,
         attachments: list[dict],
         uid: int,
+        list_unsubscribe: str = "",
     ) -> None:
         with self._lock:
             self.conn.execute(
@@ -189,8 +193,8 @@ class EmailDB:
                    (id, message_id, thread_id, folder, from_name, from_email,
                     to_addrs, cc_addrs, subject, snippet, body_text,
                     received_at, is_read, is_flagged, has_attachments,
-                    attachments, uid, cached_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    attachments, uid, cached_at, list_unsubscribe)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET
                     is_read = excluded.is_read,
                     is_flagged = excluded.is_flagged,
@@ -201,7 +205,7 @@ class EmailDB:
                     subject, snippet, body_text,
                     received_at, int(is_read), int(is_flagged),
                     int(has_attachments), json.dumps(attachments),
-                    uid, _now(),
+                    uid, _now(), list_unsubscribe or "",
                 ),
             )
             self.conn.commit()

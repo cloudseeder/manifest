@@ -1,15 +1,16 @@
 """Email Manager — autonomous inbox management.
 
 Phase 1: preference-based archiving and management logging.
-Phase 2: unsubscribe via List-Unsubscribe header (httpx GET).
+Phase 2: unsubscribe via List-Unsubscribe header or body link scanning.
 Phase 3: draft reply generation and SMTP send.
 
-Trust boundary: archive/log freely; never send without explicit human approval.
+Trust boundary: archive/unsubscribe/log freely; never send without explicit human approval.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 
 log = logging.getLogger("oap.email.manager")
@@ -49,15 +50,86 @@ async def process_message(msg: dict, db, cfg) -> list[dict]:
             db.log_action(msg["id"], "archived", reason, pref_id)
             actions.append({"action": "archived", "reason": reason, "success": result})
 
-        elif action == "unsubscribe":
-            # Phase 2 — placeholder
-            log.debug("Unsubscribe queued for Phase 2: %s", msg.get("from_email"))
+        elif action == "unsubscribe" and cfg.manager.unsubscribe_enabled:
+            result = await _unsubscribe(msg, db)
+            action_name = "unsubscribed" if result["success"] else "unsubscribe_failed"
+            db.log_action(msg["id"], action_name, result.get("reason") or result.get("url", ""), pref_id)
+            actions.append({"action": action_name, "reason": reason, **result})
 
         elif action == "ignore":
             db.log_action(msg["id"], "ignored", reason, pref_id)
             actions.append({"action": "ignored", "reason": reason})
 
     return actions
+
+
+def _extract_unsubscribe_url(list_unsubscribe_header: str, body_text: str) -> str | None:
+    """Find an HTTPS unsubscribe URL from the List-Unsubscribe header or body text.
+
+    Checks header first (RFC 2369: <https://...> entries), then scans body
+    for links containing 'unsubscribe'. Only returns HTTPS URLs — never HTTP.
+    """
+    if list_unsubscribe_header:
+        urls = re.findall(r"<(https://[^>]+)>", list_unsubscribe_header, re.IGNORECASE)
+        if urls:
+            return urls[0]
+
+    if body_text:
+        # href="https://..." or href='https://...' containing 'unsubscribe'
+        candidates = re.findall(
+            r'href=["\']?(https://[^\s"\'<>]+)["\']?',
+            body_text,
+            re.IGNORECASE,
+        )
+        for url in candidates:
+            if "unsubscribe" in url.lower():
+                return url
+
+    return None
+
+
+async def _unsubscribe(msg: dict, db) -> dict:
+    """Attempt to unsubscribe from a mailing list via HTTP GET.
+
+    Safety constraints:
+    - HTTPS only, never plain HTTP
+    - GET only, no POST
+    - 10s timeout, follows redirects to HTTPS only
+    - Falls back to body link scanning if List-Unsubscribe header is missing
+    """
+    list_unsubscribe = msg.get("list_unsubscribe", "")
+
+    # If header not stored (pre-Phase 2 messages), fetch full message for body fallback
+    body_text = msg.get("body_text", "")
+    if not list_unsubscribe and not body_text:
+        full_msg = db.get_message(msg["id"])
+        if full_msg:
+            list_unsubscribe = full_msg.get("list_unsubscribe", "")
+            body_text = full_msg.get("body_text", "")
+
+    url = _extract_unsubscribe_url(list_unsubscribe, body_text)
+    if not url:
+        return {"success": False, "reason": "No unsubscribe URL found"}
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=10.0,
+            headers={"User-Agent": "OAP-EmailManager/1.0"},
+        ) as client:
+            response = await client.get(url)
+        success = response.status_code < 400
+        log.info(
+            "Unsubscribe %s: %s → HTTP %d",
+            msg.get("from_email"),
+            url[:80],
+            response.status_code,
+        )
+        return {"success": success, "url": url, "status_code": response.status_code}
+    except Exception as exc:
+        log.warning("Unsubscribe failed for %s: %s", url[:80], exc)
+        return {"success": False, "url": url, "reason": str(exc)}
 
 
 async def _archive(msg: dict, cfg) -> bool:
