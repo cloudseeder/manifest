@@ -336,7 +336,9 @@ async def run_manage(db, cfg, limit: int = 100) -> dict:
             result = await _unsubscribe(cached_msg, db)
             action_name = "unsubscribed" if result["success"] else "unsubscribe_failed"
             reason = f"Preference: {pattern} → unsubscribe (cached message)"
-            db.log_action(cached_msg["id"], action_name, result.get("reason") or result.get("url", ""), pref["id"])
+            # Only pass pref_id on success — failures don't mark last_applied so they retry
+            db.log_action(cached_msg["id"], action_name, result.get("reason") or result.get("url", ""),
+                          pref["id"] if result["success"] else None)
             total_actions.append({"action": action_name, "reason": reason, **result})
             log.info("Unsubscribe from cached msg for %s: %s", pattern, action_name)
 
