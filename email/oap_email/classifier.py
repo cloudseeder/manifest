@@ -219,9 +219,8 @@ async def classify_message_escalated(
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"]
 
-        # Strip markdown code fences (Haiku wraps JSON in ```json ... ```)
-        start = content.find("{")
-        end = content.rfind("}")
+        # Strip markdown code fences — Haiku wraps JSON in ```json ... ``` blocks
+        start, end = content.find("{"), content.rfind("}")
         if start != -1 and end != -1:
             content = content[start:end + 1]
         parsed = json.loads(content.strip())
