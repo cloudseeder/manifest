@@ -436,6 +436,27 @@ async def dispatch(req: DispatchRequest):
             raise HTTPException(status_code=404, detail="Draft not found")
         return draft
 
+    elif action == "drafts_send":
+        if not _cfg or not _cfg.smtp.host:
+            raise HTTPException(status_code=503, detail="SMTP not configured")
+        draft_id = req.draft_id or req.id
+        if not draft_id:
+            raise HTTPException(status_code=400, detail="'draft_id' required")
+        # Fetch and verify status — must be approved
+        drafts = _db.list_drafts(status="approved")
+        draft = next((d for d in drafts if d["id"] == draft_id), None)
+        if not draft:
+            raise HTTPException(status_code=400, detail="Draft not found or not approved. Approve it first.")
+        from .smtp import send_draft
+        try:
+            await send_draft(_cfg.smtp, draft)
+        except Exception as exc:
+            log.error("SMTP send failed for draft %s: %s", draft_id, exc)
+            raise HTTPException(status_code=502, detail=f"SMTP send failed: {exc}")
+        sent = _db.update_draft_status(draft_id, "sent")
+        _db.log_action(draft["message_id"], "draft_sent", f"Sent to {draft.get('to_addr', {}).get('email', '')}")
+        return sent
+
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
 

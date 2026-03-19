@@ -60,6 +60,23 @@ async def process_message(msg: dict, db, cfg) -> list[dict]:
             db.log_action(msg["id"], "ignored", reason, pref_id)
             actions.append({"action": "ignored", "reason": reason})
 
+        elif action == "draft_reply" and cfg.manager.draft_reply_enabled:
+            draft = await _generate_draft(msg, db, cfg)
+            if draft:
+                db.log_action(msg["id"], "draft_created", reason, pref_id)
+                actions.append({"action": "draft_created", "draft_id": draft["id"], "reason": reason})
+
+    else:
+        # Default rules (no preference match) — auto-draft for urgent personal emails
+        if (cfg.manager.draft_reply_enabled
+                and msg.get("category") in cfg.manager.draft_reply_categories
+                and msg.get("priority") in cfg.manager.draft_reply_priorities):
+            draft = await _generate_draft(msg, db, cfg)
+            if draft:
+                reason = f"Auto-draft: {msg.get('category')}/{msg.get('priority')}"
+                db.log_action(msg["id"], "draft_created", reason)
+                actions.append({"action": "draft_created", "draft_id": draft["id"], "reason": reason})
+
     return actions
 
 
@@ -154,6 +171,126 @@ async def _archive(msg: dict, cfg) -> bool:
     except Exception:
         log.exception("Archive failed for message %s", msg.get("id"))
         return False
+
+
+async def _generate_draft(msg: dict, db, cfg) -> dict | None:
+    """Generate a draft reply using the LLM. Returns draft dict or None on failure.
+
+    Calls Claude (escalation) if use_escalation is true, otherwise local Ollama.
+    Only fires for personal messages with urgent or important priority.
+    """
+    # Fetch full message for body context
+    full_msg = db.get_message(msg["id"])
+    if not full_msg:
+        return None
+
+    body = (full_msg.get("body_text") or "")[:2000]
+    subject = msg.get("subject", "(no subject)")
+    from_name = msg.get("from_name", "")
+    from_email = msg.get("from_email", "")
+    thread_id = msg.get("thread_id")
+
+    # Fetch thread history for context
+    thread_context = ""
+    if thread_id:
+        thread_msgs = db.get_thread(thread_id)
+        if len(thread_msgs) > 1:
+            parts = []
+            for tm in thread_msgs[-4:]:  # last 4 messages
+                parts.append(
+                    f"From: {tm.get('from_name', '')} <{tm.get('from_email', '')}>\n"
+                    f"Subject: {tm.get('subject', '')}\n\n"
+                    f"{(tm.get('body_text') or '')[:500]}"
+                )
+            thread_context = "\n\n---\n\n".join(parts)
+
+    system_prompt = (
+        "You draft concise, professional email replies. "
+        "Return ONLY the email body text — no subject line, no 'From:', no sign-off unless natural. "
+        "Match the tone of the conversation. Be brief."
+    )
+
+    email_context = (
+        f"From: {from_name} <{from_email}>\nSubject: {subject}\n\n{body}"
+        if not thread_context
+        else f"Thread:\n\n{thread_context}"
+    )
+    user_msg = f"Draft a reply to this email:\n\n{email_context}"
+
+    draft_body = await _call_llm_for_draft(system_prompt, user_msg, cfg)
+    if not draft_body:
+        return None
+
+    to_addr = {"name": from_name, "email": from_email}
+    reply_subject = subject if subject.lower().startswith("re:") else f"Re: {subject}"
+    notes = f"Auto-drafted: {msg.get('category')}/{msg.get('priority')} from {from_email}"
+
+    draft = db.add_draft(
+        message_id=msg["id"],
+        thread_id=thread_id,
+        draft_body=draft_body,
+        draft_subject=reply_subject,
+        to_addr=to_addr,
+        notes=notes,
+    )
+    log.info("Draft created for message %s → %s", msg["id"], from_email)
+    return draft
+
+
+async def _call_llm_for_draft(system_prompt: str, user_msg: str, cfg) -> str | None:
+    """Call Ollama or Claude to generate draft text."""
+    import httpx
+    import os
+
+    if cfg.manager.use_escalation:
+        # Try Claude via Anthropic API directly
+        api_key = os.environ.get("OAP_ESCALATION_API_KEY") or os.environ.get("OAP_ANTHROPIC_API_KEY", "")
+        if api_key:
+            try:
+                async with httpx.AsyncClient(timeout=60) as client:
+                    resp = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": api_key,
+                            "anthropic-version": "2023-06-01",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": "claude-haiku-4-5-20251001",
+                            "max_tokens": 512,
+                            "system": system_prompt,
+                            "messages": [{"role": "user", "content": user_msg}],
+                        },
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    for block in data.get("content", []):
+                        if block.get("type") == "text":
+                            return block["text"].strip()
+            except Exception as exc:
+                log.warning("Claude draft generation failed, falling back to Ollama: %s", exc)
+
+    # Local Ollama fallback
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{cfg.manager.ollama_url.rstrip('/')}/api/chat",
+                json={
+                    "model": cfg.manager.ollama_model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    "stream": False,
+                    "think": False,
+                    "options": {"num_ctx": 4096},
+                },
+            )
+            resp.raise_for_status()
+            return resp.json().get("message", {}).get("content", "").strip() or None
+    except Exception as exc:
+        log.warning("Ollama draft generation failed: %s", exc)
+        return None
 
 
 async def run_manage(db, cfg, limit: int = 100) -> dict:

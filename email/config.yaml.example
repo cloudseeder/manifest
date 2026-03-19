@@ -52,3 +52,31 @@ classifier:
 #   provider: anthropic
 #   model: claude-sonnet-4-6
 #   timeout: 30
+
+# Auto-file classified messages to IMAP folders
+auto_file:
+  enabled: false
+  folders:
+    personal: INBOX
+    machine: Machine
+    mailing-list: Mailing-List
+    spam: Spam
+    offers: Offers
+
+# Email Manager — autonomous inbox management
+# manager:
+#   enabled: false                     # opt-in
+#   archive_enabled: true              # allow archiving via preferences
+#   unsubscribe_enabled: true          # allow List-Unsubscribe GET requests
+#   draft_reply_enabled: false         # generate draft replies (requires smtp config)
+#   archive_folder: "Archive"          # IMAP folder name for archived messages
+#   use_escalation: false              # use Claude for draft generation (better quality)
+#   ollama_model: "qwen3:8b"          # local model for draft generation
+
+# SMTP — required for sending approved draft replies (manager.draft_reply_enabled)
+# smtp:
+#   host: "smtp.gmail.com"
+#   port: 587
+#   username: "you@gmail.com"
+#   password: "your-app-password"     # or OAP_SMTP_PASSWORD env var
+#   use_tls: true

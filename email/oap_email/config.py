@@ -107,21 +107,34 @@ class AutoFileConfig:
 
 
 @dataclass
+class SMTPConfig:
+    host: str = ""
+    port: int = 587
+    username: str = ""
+    password: str = ""
+    use_tls: bool = True
+
+
+@dataclass
 class ManagerConfig:
     enabled: bool = False
     archive_enabled: bool = True
-    unsubscribe_enabled: bool = True   # Phase 2
-    draft_reply_enabled: bool = False  # Phase 3
+    unsubscribe_enabled: bool = True
+    draft_reply_enabled: bool = False
     learning_enabled: bool = True
     archive_folder: str = "Archive"
     draft_reply_categories: list[str] = field(default_factory=lambda: ["personal"])
     draft_reply_priorities: list[str] = field(default_factory=lambda: ["urgent", "important"])
     discovery_url: str = "http://localhost:8300"
+    ollama_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen3:8b"
+    use_escalation: bool = False  # use big LLM for draft generation
 
 
 @dataclass
 class Config:
     imap: IMAPConfig = field(default_factory=IMAPConfig)
+    smtp: SMTPConfig = field(default_factory=SMTPConfig)
     classifier: ClassifierConfig = field(default_factory=ClassifierConfig)
     auto_file: AutoFileConfig = field(default_factory=AutoFileConfig)
     escalation: EscalationConfig = field(default_factory=EscalationConfig)
@@ -204,6 +217,14 @@ def load_config(path: str | None = None) -> Config:
         if "folders" in af:
             cfg.auto_file.folders.update(af["folders"])
 
+        # SMTP
+        smtp = raw.get("smtp", {})
+        cfg.smtp.host = smtp.get("host", cfg.smtp.host)
+        cfg.smtp.port = smtp.get("port", cfg.smtp.port)
+        cfg.smtp.username = smtp.get("username", cfg.smtp.username)
+        cfg.smtp.password = os.environ.get("OAP_SMTP_PASSWORD", smtp.get("password", ""))
+        cfg.smtp.use_tls = smtp.get("use_tls", cfg.smtp.use_tls)
+
         # Manager
         mg = raw.get("manager", {})
         cfg.manager.enabled = mg.get("enabled", cfg.manager.enabled)
@@ -213,6 +234,9 @@ def load_config(path: str | None = None) -> Config:
         cfg.manager.learning_enabled = mg.get("learning_enabled", cfg.manager.learning_enabled)
         cfg.manager.archive_folder = mg.get("archive_folder", cfg.manager.archive_folder)
         cfg.manager.discovery_url = mg.get("discovery_url", cfg.manager.discovery_url)
+        cfg.manager.ollama_url = mg.get("ollama_url", cfg.manager.ollama_url)
+        cfg.manager.ollama_model = mg.get("ollama_model", cfg.manager.ollama_model)
+        cfg.manager.use_escalation = mg.get("use_escalation", cfg.manager.use_escalation)
 
         # Resolve relative DB path against config file directory
         db_path = Path(cfg.db_path)
