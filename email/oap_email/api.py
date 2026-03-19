@@ -351,21 +351,38 @@ async def dispatch(req: DispatchRequest):
         # Targeted: reset only mailing-list messages, force escalation for accuracy
         if not _cfg or not _cfg.classifier.enabled:
             raise HTTPException(status_code=400, detail="Classifier not enabled")
-        if not _cfg.escalation or not _cfg.escalation.enabled:
-            raise HTTPException(status_code=400, detail="Escalation not enabled — configure escalation in config.yaml for accurate reclassification")
+        # Resolve escalation: prefer explicit escalation config, fall back to manager settings
+        import dataclasses, os
+        from .config import EscalationConfig
+        escalation = _cfg.escalation if (_cfg.escalation and _cfg.escalation.enabled) else None
+        if escalation is None and _cfg.manager.use_escalation:
+            api_key = (
+                os.environ.get("OAP_ESCALATION_API_KEY")
+                or os.environ.get("OAP_ANTHROPIC_API_KEY", "")
+            )
+            if api_key:
+                escalation = EscalationConfig(
+                    enabled=True,
+                    provider="anthropic",
+                    model=_cfg.escalation.model or "claude-haiku-4-5-20251001",
+                    api_key=api_key,
+                    timeout=_cfg.escalation.timeout,
+                    max_tokens=256,
+                )
+                log.info("Reclassify: using escalation via manager.use_escalation + env key")
+        if escalation is None:
+            raise HTTPException(status_code=400, detail="No escalation available — set escalation.enabled or manager.use_escalation with OAP_ANTHROPIC_API_KEY")
         reset = _db.reset_category("mailing-list")
-        log.info("Targeted reclassify: reset %d mailing-list messages (escalation forced)", reset)
+        log.info("Targeted reclassify: reset %d mailing-list messages (model=%s)", reset, escalation.model)
         from .classifier import classify_uncategorized
-        import dataclasses
-        # Force use_escalation=True for this pass regardless of config setting
         forced_cfg = dataclasses.replace(_cfg.classifier, use_escalation=True)
         classified = 0
         while True:
-            batch = await classify_uncategorized(forced_cfg, _db, _cfg.escalation)
+            batch = await classify_uncategorized(forced_cfg, _db, escalation)
             classified += batch
             if batch == 0:
                 break
-        return {"reset": reset, "classified": classified, "used_escalation": True}
+        return {"reset": reset, "classified": classified, "used_escalation": True, "model": escalation.model}
 
     elif action == "reclassify_diff":
         # Show what changed in the last targeted reclassify
