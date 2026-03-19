@@ -219,7 +219,11 @@ async def classify_message_escalated(
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"]
 
-        log.warning("Classification content=%r for %s", content[:200] if content else "", from_email)
+        # Strip markdown code fences (Haiku wraps JSON in ```json ... ```)
+        start = content.find("{")
+        end = content.rfind("}")
+        if start != -1 and end != -1:
+            content = content[start:end + 1]
         parsed = json.loads(content.strip())
         category = parsed.get("category", "personal").lower()
         priority = parsed.get("priority", "informational").lower()
