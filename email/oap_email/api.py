@@ -351,27 +351,28 @@ async def dispatch(req: DispatchRequest):
         # Targeted: reset only mailing-list messages, force escalation for accuracy
         if not _cfg or not _cfg.classifier.enabled:
             raise HTTPException(status_code=400, detail="Classifier not enabled")
-        # Resolve escalation: prefer explicit escalation config, fall back to manager settings
+        # Resolve API key fresh at dispatch time (env vars may not have been set at startup)
         import dataclasses, os
         from .config import EscalationConfig
-        escalation = _cfg.escalation if (_cfg.escalation and _cfg.escalation.enabled) else None
-        if escalation is None and _cfg.manager.use_escalation:
-            api_key = (
-                os.environ.get("OAP_ESCALATION_API_KEY")
-                or os.environ.get("OAP_ANTHROPIC_API_KEY", "")
-            )
-            if api_key:
-                escalation = EscalationConfig(
-                    enabled=True,
-                    provider="anthropic",
-                    model=_cfg.escalation.model or "claude-haiku-4-5-20251001",
-                    api_key=api_key,
-                    timeout=_cfg.escalation.timeout,
-                    max_tokens=256,
-                )
-                log.info("Reclassify: using escalation via manager.use_escalation + env key")
-        if escalation is None:
-            raise HTTPException(status_code=400, detail="No escalation available — set escalation.enabled or manager.use_escalation with OAP_ANTHROPIC_API_KEY")
+        base_esc = _cfg.escalation
+        api_key = (
+            (base_esc.api_key if base_esc else "")
+            or os.environ.get("OAP_ESCALATION_API_KEY", "")
+            or os.environ.get("OAP_ANTHROPIC_API_KEY", "")
+            or os.environ.get("ANTHROPIC_API_KEY", "")
+        )
+        if not api_key:
+            raise HTTPException(status_code=400, detail="No API key found — set OAP_ANTHROPIC_API_KEY or OAP_ESCALATION_API_KEY")
+        escalation = EscalationConfig(
+            enabled=True,
+            provider=base_esc.provider if base_esc else "anthropic",
+            base_url=base_esc.base_url if base_esc else "",
+            model=(base_esc.model if (base_esc and base_esc.model) else "") or "claude-haiku-4-5-20251001",
+            api_key=api_key,
+            timeout=base_esc.timeout if base_esc else 60,
+            max_tokens=256,
+        )
+        log.info("Reclassify: using escalation model=%s", escalation.model)
         reset = _db.reset_category("mailing-list")
         log.info("Targeted reclassify: reset %d mailing-list messages (model=%s)", reset, escalation.model)
         from .classifier import classify_uncategorized
