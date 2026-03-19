@@ -22,10 +22,12 @@ class IMAPConfig:
 
 _DEFAULT_CATEGORIES: dict[str, str] = {
     "personal": (
-        "written by or about a real person you know: colleagues, friends, "
-        "family, clients, neighbors, community members. Includes social media "
-        "notifications about people you know (Facebook comments, tags, replies). "
-        "HOA/community group emails where a real person is writing also count"
+        "written by a real individual person: colleagues, friends, family, clients, "
+        "neighbors, community members. Strong signals: sent from a personal email "
+        "address (gmail, yahoo, icloud, hotmail, or any personal domain), has a "
+        "real person's name as the sender, conversational or direct tone. "
+        "HOA/community group emails where a real person is writing also count. "
+        "When in doubt between personal and mailing-list, prefer personal."
     ),
     "machine": (
         "automated/system-generated with no human author: server alerts, "
