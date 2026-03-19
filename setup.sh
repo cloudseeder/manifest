@@ -75,6 +75,23 @@ else
     echo "Generated new secret, saved to ~/.oap-secret (chmod 600)"
 fi
 
+# --- Collect API keys for launchd injection ---
+# launchd agents don't inherit shell env vars, so keys must be baked into plists.
+# Source ~/.oap-keys if it exists (KEY=VALUE pairs, one per line).
+
+if [ -f "$HOME/.oap-keys" ]; then
+    # shellcheck disable=SC1090
+    set -a; source "$HOME/.oap-keys" 2>/dev/null || true; set +a
+fi
+
+ANTHROPIC_KEY="${OAP_ANTHROPIC_API_KEY:-${OAP_ESCALATION_API_KEY:-${ANTHROPIC_API_KEY:-}}}"
+if [ -z "$ANTHROPIC_KEY" ]; then
+    echo "Note: OAP_ANTHROPIC_API_KEY not found — Claude escalation will be unavailable."
+    echo "  To fix: add it to ~/.oap-keys (OAP_ANTHROPIC_API_KEY=sk-ant-...) then re-run setup.sh"
+else
+    echo "Anthropic API key: found ($(echo "$ANTHROPIC_KEY" | cut -c1-10)...)"
+fi
+
 echo ""
 
 # --- Create LaunchAgents directory if needed ---
@@ -100,12 +117,31 @@ write_plist() {
     # Unload if already loaded
     launchctl list "$label" &>/dev/null && launchctl unload "$plist_path" 2>/dev/null || true
 
-    local env_block=""
+    # Build EnvironmentVariables block (real newlines required for heredoc expansion)
+    local -a env_keys=()
+    local -a env_vals=()
     if [ "$include_secret" = "yes" ]; then
+        env_keys+=("OAP_BACKEND_SECRET"); env_vals+=("$SECRET")
+    fi
+    # Inject Anthropic key into services that use LLM escalation
+    if [ -n "${ANTHROPIC_KEY:-}" ]; then
+        case "$label" in
+            com.oap.email|com.oap.agent|com.oap.discovery)
+                env_keys+=("OAP_ANTHROPIC_API_KEY"); env_vals+=("$ANTHROPIC_KEY")
+                ;;
+        esac
+    fi
+    local env_block=""
+    if [ ${#env_keys[@]} -gt 0 ]; then
         env_block="    <key>EnvironmentVariables</key>
-    <dict>
-        <key>OAP_BACKEND_SECRET</key>
-        <string>$SECRET</string>
+    <dict>"
+        local i
+        for i in "${!env_keys[@]}"; do
+            env_block="$env_block
+        <key>${env_keys[$i]}</key>
+        <string>${env_vals[$i]}</string>"
+        done
+        env_block="$env_block
     </dict>"
     fi
 
