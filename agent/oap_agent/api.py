@@ -637,7 +637,9 @@ async def chat(req: ChatRequest):
                 )
                 _memory_max_sim = max((f.get("similarity", 0) for f in facts), default=0)
             else:
-                _memory_has_images = any(f.get("image_path") for f in facts)
+                # inject-all path: no fact was relevant enough for RAG,
+                # so none should trigger memory-first routing
+                _memory_has_images = False
 
             if memory_parts:
                 preamble = (
