@@ -191,18 +191,29 @@ async def refile():
 
 
 @app.post("/reclassify")
-async def reclassify():
-    """Reset all categories and reclassify every message."""
+async def reclassify(category: str | None = Query(None)):
+    """Reset categories and reclassify. Pass ?category=mailing-list to target only one category."""
     if not _db:
         raise HTTPException(status_code=503, detail="Service unavailable")
     if not _cfg or not _cfg.classifier.enabled:
         raise HTTPException(status_code=400, detail="Classifier not enabled")
-    reset = _db.reset_categories()
-    _db.reset_priorities()
-    log.info("Reset %d message categories for reclassification", reset)
+
+    if category:
+        reset = _db.reset_category(category)
+        log.info("Reset %d '%s' messages for targeted reclassification", reset, category)
+    else:
+        reset = _db.reset_categories()
+        _db.reset_priorities()
+        log.info("Reset %d message categories for reclassification", reset)
+
     from .classifier import classify_uncategorized
-    count = await classify_uncategorized(_cfg.classifier, _db, _cfg.escalation)
-    return {"reset": reset, "classified": count}
+    classified = 0
+    while True:
+        batch = await classify_uncategorized(_cfg.classifier, _db, _cfg.escalation)
+        classified += batch
+        if batch == 0:
+            break
+    return {"reset": reset, "classified": classified, "category_filter": category}
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +347,22 @@ async def dispatch(req: DispatchRequest):
     elif action == "reclassify":
         result = await reclassify()
         return result
+    elif action == "reclassify_mailing_lists":
+        # Targeted: reset only mailing-list messages, force escalation for accuracy
+        if not _cfg or not _cfg.classifier.enabled:
+            raise HTTPException(status_code=400, detail="Classifier not enabled")
+        reset = _db.reset_category("mailing-list")
+        log.info("Targeted reclassify: reset %d mailing-list messages", reset)
+        from .classifier import classify_uncategorized
+        # Force escalation for this pass (better accuracy for personal vs. mailing-list)
+        escalation = _cfg.escalation if _cfg.escalation and _cfg.escalation.enabled else None
+        classified = 0
+        while True:
+            batch = await classify_uncategorized(_cfg.classifier, _db, escalation)
+            classified += batch
+            if batch == 0:
+                break
+        return {"reset": reset, "classified": classified, "used_escalation": escalation is not None}
     elif action == "file":
         result = await file_messages()
         return result

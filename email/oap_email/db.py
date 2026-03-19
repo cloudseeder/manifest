@@ -361,6 +361,16 @@ class EmailDB:
             self.conn.commit()
             return cur.rowcount
 
+    def reset_category(self, category: str) -> int:
+        """Clear category/priority for messages with a specific category."""
+        with self._lock:
+            cur = self.conn.execute(
+                "UPDATE messages SET category = NULL, priority = NULL WHERE category = ?",
+                (category,),
+            )
+            self.conn.commit()
+            return cur.rowcount
+
     def set_classification(self, msg_id: str, category: str | None, priority: str | None) -> None:
         """Set both category and priority in one call."""
         with self._lock:

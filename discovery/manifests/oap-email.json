@@ -6,7 +6,7 @@
     "format": "application/json",
     "description": "Use action='ask' for any natural language question. Use 'manage' to run autonomous inbox management. Use 'preferences_add' to teach a rule, 'preferences_list' to see rules, 'manager_log' to see what was done.",
     "parameters": {
-      "action": {"type": "string", "description": "ask (questions), manage (run autonomous management), mailing_lists (show senders needing keep/unsubscribe decision), preferences_add, preferences_list, preferences_remove, manager_log, relationships_list, drafts_list, drafts_approve, drafts_reject, drafts_send", "required": true},
+      "action": {"type": "string", "description": "ask (questions), manage (run autonomous management), mailing_lists (show senders needing keep/unsubscribe decision), reclassify_mailing_lists (re-run classifier on mailing-list messages using Claude for accuracy), preferences_add, preferences_list, preferences_remove, manager_log, relationships_list, drafts_list, drafts_approve, drafts_reject, drafts_send", "required": true},
       "question": {"type": "string", "description": "For ask action — your natural language question about email.", "required": false},
       "pattern": {"type": "string", "description": "For preferences_add/remove — email address, @domain, or 'category:offers'", "required": false},
       "manager_action": {"type": "string", "description": "For preferences_add — what to do: archive, unsubscribe, ignore, flag, draft_reply", "required": false},
