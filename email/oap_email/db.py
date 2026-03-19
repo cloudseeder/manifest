@@ -409,7 +409,8 @@ class EmailDB:
     def get_unclassified(self, limit: int = 50) -> list[dict]:
         """Return messages missing category or priority."""
         rows = self.conn.execute(
-            "SELECT id, from_name, from_email, subject, snippet FROM messages "
+            "SELECT id, from_name, from_email, subject, snippet, list_unsubscribe "
+            "FROM messages "
             "WHERE category IS NULL OR priority IS NULL "
             "ORDER BY received_at DESC LIMIT ?",
             (limit,),
