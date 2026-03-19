@@ -109,6 +109,22 @@ class AutoFileConfig:
 
 
 @dataclass
+class SpamFilterConfig:
+    """Pre-classifier spam tiers — run before the expensive LLM.
+
+    Tier order: blocked_domains → x_spam_status header → local model.
+    Only messages that pass all tiers reach the full category+priority LLM.
+    """
+    enabled: bool = False
+    # Small local model for fast spam/ham binary check (qwen3:2b recommended)
+    local_model: str = "qwen3:1.7b"
+    # Confidence threshold — only auto-classify as spam above this score
+    spam_threshold: float = 0.85
+    # Domain blocklist — instant spam with no model call (e.g. ["spam-kingdom.com"])
+    blocked_domains: list[str] = field(default_factory=list)
+
+
+@dataclass
 class SMTPConfig:
     host: str = ""
     port: int = 587
@@ -141,6 +157,7 @@ class Config:
     auto_file: AutoFileConfig = field(default_factory=AutoFileConfig)
     escalation: EscalationConfig = field(default_factory=EscalationConfig)
     manager: ManagerConfig = field(default_factory=ManagerConfig)
+    spam_filter: SpamFilterConfig = field(default_factory=SpamFilterConfig)
     db_path: str = "oap_email.db"
     host: str = "127.0.0.1"
     port: int = 8305
@@ -226,6 +243,14 @@ def load_config(path: str | None = None) -> Config:
         cfg.smtp.username = smtp.get("username", cfg.smtp.username)
         cfg.smtp.password = os.environ.get("OAP_SMTP_PASSWORD", smtp.get("password", ""))
         cfg.smtp.use_tls = smtp.get("use_tls", cfg.smtp.use_tls)
+
+        # Spam pre-filter
+        sf = raw.get("spam_filter", {})
+        cfg.spam_filter.enabled = sf.get("enabled", cfg.spam_filter.enabled)
+        cfg.spam_filter.local_model = sf.get("local_model", cfg.spam_filter.local_model)
+        cfg.spam_filter.spam_threshold = sf.get("spam_threshold", cfg.spam_filter.spam_threshold)
+        if "blocked_domains" in sf:
+            cfg.spam_filter.blocked_domains = [d.lower() for d in sf["blocked_domains"]]
 
         # Manager
         mg = raw.get("manager", {})

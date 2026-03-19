@@ -46,6 +46,16 @@ classifier:
   #   "@bankofamerica.com":
   #     priority: urgent
 
+# Spam pre-filter — fast tiers that run before the expensive LLM
+# Catches definitive spam without touching Haiku/Sonnet.
+# Tier order: blocked_domains → x-spam-status header → local model → full LLM
+# spam_filter:
+#   enabled: true
+#   local_model: "qwen3:1.7b"        # Fast local spam/ham binary check
+#   spam_threshold: 0.85             # Only auto-classify spam above this confidence
+#   blocked_domains:                 # Instant spam, no model call
+#     - "spam-kingdom.com"
+
 # Big LLM for classification (optional — used when classifier.use_escalation: true)
 # escalation:
 #   enabled: true

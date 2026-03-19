@@ -93,6 +93,9 @@ async def scan():
                 uid=msg["uid"],
                 list_unsubscribe=msg.get("list_unsubscribe", ""),
                 list_unsubscribe_post=msg.get("list_unsubscribe_post", ""),
+                received_spf=msg.get("received_spf", ""),
+                auth_results=msg.get("auth_results", ""),
+                x_spam_status=msg.get("x_spam_status", ""),
             )
         total += len(messages)
 
@@ -109,13 +112,13 @@ async def scan():
         if total > 50:
             # Initial ingest — classify everything
             while True:
-                batch = await classify_uncategorized(_cfg.classifier, _db, _cfg.escalation)
+                batch = await classify_uncategorized(_cfg.classifier, _db, _cfg.escalation, _cfg.spam_filter)
                 classified += batch
                 if batch == 0:
                     break
         else:
             # Incremental — single batch, keeps scan fast
-            classified = await classify_uncategorized(_cfg.classifier, _db, _cfg.escalation)
+            classified = await classify_uncategorized(_cfg.classifier, _db, _cfg.escalation, _cfg.spam_filter)
 
     # Auto-file classified messages
     filed = 0
@@ -134,7 +137,7 @@ async def classify():
     if not _cfg or not _cfg.classifier.enabled:
         raise HTTPException(status_code=400, detail="Classifier not enabled")
     from .classifier import classify_uncategorized
-    count = await classify_uncategorized(_cfg.classifier, _db, _cfg.escalation)
+    count = await classify_uncategorized(_cfg.classifier, _db, _cfg.escalation, _cfg.spam_filter)
     return {"classified": count}
 
 
@@ -210,7 +213,7 @@ async def reclassify(category: str | None = Query(None)):
     from .classifier import classify_uncategorized
     classified = 0
     while True:
-        batch = await classify_uncategorized(_cfg.classifier, _db, _cfg.escalation)
+        batch = await classify_uncategorized(_cfg.classifier, _db, _cfg.escalation, _cfg.spam_filter)
         classified += batch
         if batch == 0:
             break
@@ -382,7 +385,7 @@ async def dispatch(req: DispatchRequest):
         async def _bg_reclassify():
             classified = 0
             while True:
-                batch = await classify_uncategorized(forced_cfg, _db, escalation)
+                batch = await classify_uncategorized(forced_cfg, _db, escalation, _cfg.spam_filter)
                 classified += batch
                 if batch == 0:
                     break

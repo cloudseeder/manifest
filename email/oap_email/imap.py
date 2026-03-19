@@ -158,6 +158,9 @@ def parse_message(uid: int, folder: str, raw_bytes: bytes) -> dict[str, Any]:
     attachments = _extract_attachments(msg)
     list_unsubscribe = msg.get("List-Unsubscribe", "") or ""
     list_unsubscribe_post = msg.get("List-Unsubscribe-Post", "") or ""
+    received_spf = msg.get("Received-SPF", "") or ""
+    auth_results = msg.get("Authentication-Results", "") or ""
+    x_spam_status = msg.get("X-Spam-Status", "") or ""
 
     text_body, html_body = _extract_body(msg)
     body_text = sanitize_email_body(text_body, html_body)
@@ -184,6 +187,9 @@ def parse_message(uid: int, folder: str, raw_bytes: bytes) -> dict[str, Any]:
         "uid": uid,
         "list_unsubscribe": list_unsubscribe,
         "list_unsubscribe_post": list_unsubscribe_post,
+        "received_spf": received_spf,
+        "auth_results": auth_results,
+        "x_spam_status": x_spam_status,
     }
 
 

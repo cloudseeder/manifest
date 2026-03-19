@@ -9,7 +9,7 @@ import re
 
 import httpx
 
-from .config import ClassifierConfig, EscalationConfig
+from .config import ClassifierConfig, EscalationConfig, SpamFilterConfig
 
 log = logging.getLogger("oap.email.classifier")
 
@@ -237,10 +237,88 @@ async def classify_message_escalated(
         return None
 
 
+def _spam_heuristics(row: dict, blocked_domains: set[str]) -> tuple[bool, str]:
+    """Check definitive header/domain spam signals — no LLM needed.
+
+    Returns (is_spam, log_tag). Only fires on high-confidence signals to
+    avoid false positives. Ambiguous cases fall through to the local model.
+    """
+    from_email = (row.get("from_email") or "").lower()
+
+    # Blocked domain — operator-curated list, instant decision
+    if blocked_domains and "@" in from_email:
+        domain = from_email.split("@", 1)[1]
+        if domain in blocked_domains:
+            return True, f"[blocklist] {domain}"
+
+    # Upstream spam filter already decided (X-Spam-Status: Yes ...)
+    x_spam = (row.get("x_spam_status") or "").lower()
+    if x_spam.startswith("yes"):
+        return True, "[x-spam-header]"
+
+    return False, ""
+
+
+async def _classify_spam_local(
+    cfg: ClassifierConfig,
+    spam_cfg: SpamFilterConfig,
+    from_email: str,
+    subject: str,
+    snippet: str,
+) -> tuple[str, float]:
+    """Fast binary spam/ham check via small local model.
+
+    Returns (label, score). On any error returns ("ham", 0.5) so the message
+    falls through to full classification — never silently drops legitimate mail.
+    """
+    system_prompt = (
+        "Classify this email as spam or ham. "
+        "Spam: phishing, scams, unsolicited bulk mail, adult content, fake alerts. "
+        "Ham: anything legitimate — personal, work, newsletters, receipts, notifications. "
+        'Respond with ONLY valid JSON: {"label":"spam","score":0.95}'
+    )
+    user_msg = f"From: {from_email}\nSubject: {subject}\n\n{snippet[:400]}"
+
+    payload = {
+        "model": spam_cfg.local_model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_msg},
+        ],
+        "stream": False,
+        "format": "json",
+        "options": {"num_ctx": 1024, "num_predict": 50},
+        "think": False,
+    }
+
+    try:
+        client = _get_client(cfg)
+        resp = await client.post(
+            f"{cfg.ollama_url.rstrip('/')}/api/chat",
+            json=payload,
+        )
+        resp.raise_for_status()
+        content = resp.json().get("message", {}).get("content", "").strip()
+        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+        start, end = content.find("{"), content.rfind("}")
+        if start != -1 and end != -1:
+            content = content[start:end + 1]
+        parsed = json.loads(content)
+        label = parsed.get("label", "ham").lower()
+        score = float(parsed.get("score", 0.5))
+        if label not in ("spam", "ham"):
+            label = "ham"
+        return label, max(0.0, min(1.0, score))
+    except Exception as exc:
+        log.debug("Local spam check error for %s: %s", from_email, exc)
+        return "ham", 0.5  # safe fallback — proceed to full LLM
+
+
 async def classify_uncategorized(
     cfg: ClassifierConfig,
     db,
     escalation: EscalationConfig | None = None,
+    spam_cfg: SpamFilterConfig | None = None,
 ) -> int:
     """Classify all unclassified messages. Returns count."""
     rows = db.get_unclassified(limit=50)
@@ -248,6 +326,10 @@ async def classify_uncategorized(
         return 0
 
     classified = 0
+    blocked_domains: set[str] = set(
+        d.lower() for d in (spam_cfg.blocked_domains if spam_cfg else [])
+    )
+
     for row in rows:
         from_email = row.get("from_email", "")
 
@@ -276,6 +358,30 @@ async def classify_uncategorized(
             log.info("%-13s %-13s [override] %s — %s",
                      category, priority, from_email, row.get("subject", "")[:50])
             continue
+
+        # Tier: header heuristics (blocked domain, upstream spam header)
+        if spam_cfg and spam_cfg.enabled:
+            is_spam, heuristic_tag = _spam_heuristics(row, blocked_domains)
+            if is_spam:
+                db.set_classification(row["id"], "spam", "noise")
+                classified += 1
+                log.info("%-13s %-13s %s %s — %s",
+                         "spam", "noise", heuristic_tag, from_email, row.get("subject", "")[:50])
+                continue
+
+        # Tier: fast local spam model (qwen3:2b) — cheaper than full category+priority LLM
+        if spam_cfg and spam_cfg.enabled:
+            label, score = await _classify_spam_local(
+                cfg, spam_cfg, from_email,
+                row.get("subject", ""), row.get("snippet", ""),
+            )
+            if label == "spam" and score >= spam_cfg.spam_threshold:
+                db.set_classification(row["id"], "spam", "noise")
+                classified += 1
+                log.info("%-13s %-13s [local-spam %.0f%%] %s — %s",
+                         "spam", "noise", score * 100,
+                         from_email, row.get("subject", "")[:50])
+                continue
 
         # LLM classification
         if cfg.use_escalation and escalation and escalation.enabled:

@@ -89,6 +89,11 @@ class EmailDB:
             self.conn.execute("ALTER TABLE messages ADD COLUMN prev_category TEXT")
             self.conn.execute("ALTER TABLE messages ADD COLUMN prev_priority TEXT")
             self.conn.commit()
+        if "received_spf" not in cols:
+            self.conn.execute("ALTER TABLE messages ADD COLUMN received_spf TEXT")
+            self.conn.execute("ALTER TABLE messages ADD COLUMN auth_results TEXT")
+            self.conn.execute("ALTER TABLE messages ADD COLUMN x_spam_status TEXT")
+            self.conn.commit()
         # Manager tables
         self.conn.executescript("""
             CREATE TABLE IF NOT EXISTS email_preferences (
@@ -194,6 +199,9 @@ class EmailDB:
         uid: int,
         list_unsubscribe: str = "",
         list_unsubscribe_post: str = "",
+        received_spf: str = "",
+        auth_results: str = "",
+        x_spam_status: str = "",
     ) -> None:
         with self._lock:
             self.conn.execute(
@@ -201,13 +209,17 @@ class EmailDB:
                    (id, message_id, thread_id, folder, from_name, from_email,
                     to_addrs, cc_addrs, subject, snippet, body_text,
                     received_at, is_read, is_flagged, has_attachments,
-                    attachments, uid, cached_at, list_unsubscribe, list_unsubscribe_post)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    attachments, uid, cached_at, list_unsubscribe, list_unsubscribe_post,
+                    received_spf, auth_results, x_spam_status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET
                     is_read = excluded.is_read,
                     is_flagged = excluded.is_flagged,
                     list_unsubscribe = excluded.list_unsubscribe,
                     list_unsubscribe_post = excluded.list_unsubscribe_post,
+                    received_spf = excluded.received_spf,
+                    auth_results = excluded.auth_results,
+                    x_spam_status = excluded.x_spam_status,
                     cached_at = excluded.cached_at""",
                 (
                     id, message_id, thread_id, folder, from_name, from_email,
@@ -216,6 +228,7 @@ class EmailDB:
                     received_at, int(is_read), int(is_flagged),
                     int(has_attachments), json.dumps(attachments),
                     uid, _now(), list_unsubscribe or "", list_unsubscribe_post or "",
+                    received_spf or "", auth_results or "", x_spam_status or "",
                 ),
             )
             self.conn.commit()
@@ -409,7 +422,8 @@ class EmailDB:
     def get_unclassified(self, limit: int = 50) -> list[dict]:
         """Return messages missing category or priority."""
         rows = self.conn.execute(
-            "SELECT id, from_name, from_email, subject, snippet, list_unsubscribe "
+            "SELECT id, from_name, from_email, subject, snippet, "
+            "list_unsubscribe, received_spf, auth_results, x_spam_status "
             "FROM messages "
             "WHERE category IS NULL OR priority IS NULL "
             "ORDER BY received_at DESC LIMIT ?",
