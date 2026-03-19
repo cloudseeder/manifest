@@ -185,6 +185,10 @@ async def classify_message_escalated(
                     if block.get("type") == "text":
                         content = block["text"]
                         break
+                if not content:
+                    log.warning("Empty content from Claude (stop_reason=%s blocks=%s) for %s",
+                                data.get("stop_reason"), [b.get("type") for b in data.get("content", [])],
+                                from_email)
         else:
             base_url = escalation.base_url or "https://api.openai.com/v1"
             async with httpx.AsyncClient(timeout=escalation.timeout) as client:
