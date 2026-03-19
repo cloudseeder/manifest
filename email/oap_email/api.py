@@ -367,7 +367,7 @@ async def dispatch(req: DispatchRequest):
             enabled=True,
             provider=base_esc.provider if base_esc else "anthropic",
             base_url=base_esc.base_url if base_esc else "",
-            model=(base_esc.model if (base_esc and base_esc.model) else "") or "claude-haiku-4-5-20251001",
+            model="claude-haiku-4-5-20251001",  # Haiku is sufficient for JSON classification
             api_key=api_key,
             timeout=base_esc.timeout if base_esc else 60,
             max_tokens=256,
