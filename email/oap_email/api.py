@@ -348,11 +348,11 @@ async def dispatch(req: DispatchRequest):
         result = await reclassify()
         return result
     elif action == "reclassify_mailing_lists":
-        # Targeted: reset only mailing-list messages, force escalation for accuracy
+        # Targeted: reset only mailing-list messages, force escalation for accuracy.
+        # Runs in background — returns immediately to avoid HTTP timeout.
         if not _cfg or not _cfg.classifier.enabled:
             raise HTTPException(status_code=400, detail="Classifier not enabled")
-        # Resolve API key fresh at dispatch time (env vars may not have been set at startup)
-        import dataclasses, os
+        import dataclasses, os, asyncio
         from .config import EscalationConfig
         base_esc = _cfg.escalation
         api_key = (
@@ -367,23 +367,33 @@ async def dispatch(req: DispatchRequest):
             enabled=True,
             provider=base_esc.provider if base_esc else "anthropic",
             base_url=base_esc.base_url if base_esc else "",
-            model="claude-haiku-4-5-20251001",  # Haiku is sufficient for JSON classification
+            model="claude-haiku-4-5-20251001",
             api_key=api_key,
             timeout=base_esc.timeout if base_esc else 60,
             max_tokens=256,
         )
-        log.info("Reclassify: using escalation model=%s", escalation.model)
         reset = _db.reset_category("mailing-list")
-        log.info("Targeted reclassify: reset %d mailing-list messages (model=%s)", reset, escalation.model)
+        log.info("Reclassify: reset %d mailing-list messages, running in background (model=%s)", reset, escalation.model)
+
         from .classifier import classify_uncategorized
         forced_cfg = dataclasses.replace(_cfg.classifier, use_escalation=True)
-        classified = 0
-        while True:
-            batch = await classify_uncategorized(forced_cfg, _db, escalation)
-            classified += batch
-            if batch == 0:
-                break
-        return {"reset": reset, "classified": classified, "used_escalation": True, "model": escalation.model}
+
+        async def _bg_reclassify():
+            classified = 0
+            while True:
+                batch = await classify_uncategorized(forced_cfg, _db, escalation)
+                classified += batch
+                if batch == 0:
+                    break
+            log.info("Background reclassify complete: %d classified", classified)
+
+        asyncio.create_task(_bg_reclassify())
+        return {
+            "status": "started",
+            "reset": reset,
+            "model": escalation.model,
+            "message": f"Reclassifying {reset} messages in background. Check 'reclassify_diff' in a minute for results.",
+        }
 
     elif action == "reclassify_diff":
         # Show what changed in the last targeted reclassify
