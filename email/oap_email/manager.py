@@ -67,9 +67,11 @@ async def process_message(msg: dict, db, cfg) -> list[dict]:
                 actions.append({"action": "draft_created", "draft_id": draft["id"], "reason": reason})
 
     else:
-        # Default rules (no preference match) — auto-draft for urgent personal emails
+        # No preference match — auto-draft for urgent personal emails only
+        # Mailing lists are never acted on without explicit user decision
         if (cfg.manager.draft_reply_enabled
                 and msg.get("category") in cfg.manager.draft_reply_categories
+                and msg.get("category") != "mailing-list"
                 and msg.get("priority") in cfg.manager.draft_reply_priorities):
             draft = await _generate_draft(msg, db, cfg)
             if draft:
@@ -311,10 +313,21 @@ async def run_manage(db, cfg, limit: int = 100) -> dict:
         processed += 1
         total_actions.extend(actions)
 
+    # Surface mailing lists that need a keep/unsubscribe decision
+    pending_review = db.get_unreviewed_mailing_lists()
+
     summary = {
         "processed": processed,
         "actions_taken": len(total_actions),
         "actions": total_actions,
+        "mailing_lists_pending_review": pending_review,
+        "mailing_lists_count": len(pending_review),
     }
-    log.info("Manager run complete: processed=%d actions=%d", processed, len(total_actions))
+    if pending_review:
+        log.info(
+            "Manager run complete: processed=%d actions=%d mailing_lists_pending=%d",
+            processed, len(total_actions), len(pending_review),
+        )
+    else:
+        log.info("Manager run complete: processed=%d actions=%d", processed, len(total_actions))
     return summary

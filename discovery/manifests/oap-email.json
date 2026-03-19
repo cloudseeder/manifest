@@ -1,12 +1,12 @@
 {
   "oap": "1.0",
   "name": "oap-email",
-  "description": "Ask about your email or manage your inbox in natural language. Questions: 'anything urgent today?', 'emails from Amy', 'what came in overnight?', 'anything about the invoice?', 'what needs my attention?'. Manager: 'always archive emails from @medium.com', 'never archive emails from @cpa.com', 'show what the email manager did today', 'show pending drafts'. Sender preferences: 'always treat @facebook.com as noise', 'mark joe@cpa.us as important'.",
+  "description": "Ask about your email or manage your inbox in natural language. Questions: 'anything urgent today?', 'emails from Amy', 'what came in overnight?', 'anything about the invoice?'. Manager: 'run the email manager', 'show mailing lists for review', 'always archive emails from @medium.com', 'unsubscribe from @retailer.com', 'keep NYT newsletters', 'show pending drafts', 'approve draft', 'send draft'. Sender preferences: 'always treat @facebook.com as noise', 'mark joe@cpa.us as important'.",
   "input": {
     "format": "application/json",
     "description": "Use action='ask' for any natural language question. Use 'manage' to run autonomous inbox management. Use 'preferences_add' to teach a rule, 'preferences_list' to see rules, 'manager_log' to see what was done.",
     "parameters": {
-      "action": {"type": "string", "description": "ask (questions), manage (run autonomous management), preferences_add, preferences_list, preferences_remove, manager_log, relationships_list, drafts_list, drafts_approve, drafts_reject, drafts_send", "required": true},
+      "action": {"type": "string", "description": "ask (questions), manage (run autonomous management), mailing_lists (show senders needing keep/unsubscribe decision), preferences_add, preferences_list, preferences_remove, manager_log, relationships_list, drafts_list, drafts_approve, drafts_reject, drafts_send", "required": true},
       "question": {"type": "string", "description": "For ask action — your natural language question about email.", "required": false},
       "pattern": {"type": "string", "description": "For preferences_add/remove — email address, @domain, or 'category:offers'", "required": false},
       "manager_action": {"type": "string", "description": "For preferences_add — what to do: archive, unsubscribe, ignore, flag, draft_reply", "required": false},

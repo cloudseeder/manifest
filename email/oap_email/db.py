@@ -624,6 +624,37 @@ class EmailDB:
                 )
             self.conn.commit()
 
+    def get_unreviewed_mailing_lists(self, limit: int = 30) -> list[dict]:
+        """Return unique mailing-list senders with no preference set yet.
+
+        Excludes senders whose exact email OR @domain already has a preference.
+        Groups by from_email, ordered by message count descending.
+        """
+        rows = self.conn.execute(
+            "SELECT from_email, from_name, COUNT(*) as message_count, "
+            "MAX(subject) as example_subject, MAX(received_at) as last_received "
+            "FROM messages "
+            "WHERE category = 'mailing-list' AND from_email IS NOT NULL AND from_email != '' "
+            "GROUP BY from_email "
+            "ORDER BY message_count DESC "
+            "LIMIT ?",
+            (limit,),
+        ).fetchall()
+
+        # Filter out senders that already have a preference (exact or @domain)
+        existing = {r["pattern"] for r in self.conn.execute(
+            "SELECT pattern FROM email_preferences"
+        ).fetchall()}
+
+        results = []
+        for r in rows:
+            d = dict(r)
+            email = d["from_email"].lower()
+            domain = "@" + email.split("@", 1)[1] if "@" in email else ""
+            if email not in existing and domain not in existing:
+                results.append(d)
+        return results
+
     def list_log(self, limit: int = 50) -> list[dict]:
         rows = self.conn.execute(
             "SELECT l.*, m.subject, m.from_name, m.from_email "

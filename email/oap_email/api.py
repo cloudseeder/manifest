@@ -386,6 +386,17 @@ async def dispatch(req: DispatchRequest):
         result = await run_manage(_db, _cfg)
         return result
 
+    elif action in ("mailing_lists", "mailing_list_review"):
+        pending = _db.get_unreviewed_mailing_lists()
+        return {
+            "mailing_lists_pending_review": pending,
+            "total": len(pending),
+            "instructions": (
+                "For each sender, ask the user: keep (saves preference to ignore) "
+                "or unsubscribe (saves preference and attempts List-Unsubscribe)."
+            ),
+        }
+
     elif action == "preferences_list":
         return {"preferences": _db.list_preferences()}
 
