@@ -675,6 +675,34 @@ class EmailDB:
                 )
             self.conn.commit()
 
+    def get_latest_unsubscribe_message(self, from_email: str) -> dict | None:
+        """Find the most recent cached message from this sender with a List-Unsubscribe header.
+
+        Checks exact email first, then @domain. Used to action unsubscribe preferences
+        against cached messages rather than waiting for new mail to arrive.
+        """
+        email_lc = from_email.lower()
+        row = self.conn.execute(
+            "SELECT id, from_email, list_unsubscribe, list_unsubscribe_post, body_text "
+            "FROM messages WHERE from_email = ? AND list_unsubscribe != '' "
+            "ORDER BY received_at DESC LIMIT 1",
+            (email_lc,),
+        ).fetchone()
+        if row:
+            return dict(row)
+        # Domain match
+        if "@" in email_lc:
+            domain = "%" + email_lc.split("@", 1)[1]
+            row = self.conn.execute(
+                "SELECT id, from_email, list_unsubscribe, list_unsubscribe_post, body_text "
+                "FROM messages WHERE from_email LIKE ? AND list_unsubscribe != '' "
+                "ORDER BY received_at DESC LIMIT 1",
+                (domain,),
+            ).fetchone()
+            if row:
+                return dict(row)
+        return None
+
     def get_unreviewed_mailing_lists(self, limit: int = 30) -> list[dict]:
         """Return unique mailing-list senders with no preference set yet.
 

@@ -321,6 +321,25 @@ async def run_manage(db, cfg, limit: int = 100) -> dict:
         processed += 1
         total_actions.extend(actions)
 
+    # Action any unsubscribe preferences that haven't fired yet by looking up
+    # cached messages — no need to wait for new mail when the URL is already stored
+    unapplied = [
+        p for p in db.list_preferences()
+        if p.get("action") == "unsubscribe" and not p.get("last_applied")
+    ]
+    for pref in unapplied:
+        pattern = pref["pattern"]
+        # Resolve pattern to an email address for the DB lookup
+        lookup_email = pattern.lstrip("@") if pattern.startswith("@") else pattern
+        cached_msg = db.get_latest_unsubscribe_message(lookup_email)
+        if cached_msg:
+            result = await _unsubscribe(cached_msg, db)
+            action_name = "unsubscribed" if result["success"] else "unsubscribe_failed"
+            reason = f"Preference: {pattern} → unsubscribe (cached message)"
+            db.log_action(cached_msg["id"], action_name, result.get("reason") or result.get("url", ""), pref["id"])
+            total_actions.append({"action": action_name, "reason": reason, **result})
+            log.info("Unsubscribe from cached msg for %s: %s", pattern, action_name)
+
     # Surface mailing lists that need a keep/unsubscribe decision
     pending_review = db.get_unreviewed_mailing_lists()
 
