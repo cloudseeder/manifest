@@ -255,6 +255,14 @@ async def classify_uncategorized(
         db_override = db.get_override(from_email) if from_email else None
         override = _check_overrides(from_email, cfg.sender_overrides, db_override)
 
+        if not override and row.get("list_unsubscribe"):
+            # List-Unsubscribe header is definitive — no LLM needed
+            db.set_classification(row["id"], "mailing-list", "informational")
+            classified += 1
+            log.info("%-13s %-13s [list-header] %s — %s",
+                     "mailing-list", "informational", from_email, row.get("subject", "")[:50])
+            continue
+
         if override:
             category = override.get("category")
             priority = override.get("priority")

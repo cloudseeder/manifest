@@ -157,6 +157,7 @@ def parse_message(uid: int, folder: str, raw_bytes: bytes) -> dict[str, Any]:
     received_at = _parse_date(msg.get("Date"))
     attachments = _extract_attachments(msg)
     list_unsubscribe = msg.get("List-Unsubscribe", "") or ""
+    list_unsubscribe_post = msg.get("List-Unsubscribe-Post", "") or ""
 
     text_body, html_body = _extract_body(msg)
     body_text = sanitize_email_body(text_body, html_body)
@@ -182,6 +183,7 @@ def parse_message(uid: int, folder: str, raw_bytes: bytes) -> dict[str, Any]:
         "attachments": attachments,
         "uid": uid,
         "list_unsubscribe": list_unsubscribe,
+        "list_unsubscribe_post": list_unsubscribe_post,
     }
 
 

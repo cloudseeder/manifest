@@ -108,27 +108,31 @@ def _extract_unsubscribe_url(list_unsubscribe_header: str, body_text: str) -> st
 
 
 async def _unsubscribe(msg: dict, db) -> dict:
-    """Attempt to unsubscribe from a mailing list via HTTP GET.
+    """Attempt to unsubscribe from a mailing list.
 
+    Prefers RFC 8058 one-click POST (List-Unsubscribe-Post header) over GET.
     Safety constraints:
     - HTTPS only, never plain HTTP
-    - GET only, no POST
-    - 10s timeout, follows redirects to HTTPS only
+    - 10s timeout
     - Falls back to body link scanning if List-Unsubscribe header is missing
     """
     list_unsubscribe = msg.get("list_unsubscribe", "")
+    list_unsubscribe_post = msg.get("list_unsubscribe_post", "")
 
-    # If header not stored (pre-Phase 2 messages), fetch full message for body fallback
+    # If headers not stored, fetch full message
     body_text = msg.get("body_text", "")
     if not list_unsubscribe and not body_text:
         full_msg = db.get_message(msg["id"])
         if full_msg:
             list_unsubscribe = full_msg.get("list_unsubscribe", "")
+            list_unsubscribe_post = full_msg.get("list_unsubscribe_post", "")
             body_text = full_msg.get("body_text", "")
 
     url = _extract_unsubscribe_url(list_unsubscribe, body_text)
     if not url:
         return {"success": False, "reason": "No unsubscribe URL found"}
+
+    use_post = bool(list_unsubscribe_post and "List-Unsubscribe=One-Click" in list_unsubscribe_post)
 
     try:
         import httpx
@@ -137,15 +141,19 @@ async def _unsubscribe(msg: dict, db) -> dict:
             timeout=10.0,
             headers={"User-Agent": "OAP-EmailManager/1.0"},
         ) as client:
-            response = await client.get(url)
+            if use_post:
+                response = await client.post(
+                    url,
+                    data="List-Unsubscribe=One-Click",
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+            else:
+                response = await client.get(url)
+        method = "POST(one-click)" if use_post else "GET"
         success = response.status_code < 400
-        log.info(
-            "Unsubscribe %s: %s → HTTP %d",
-            msg.get("from_email"),
-            url[:80],
-            response.status_code,
-        )
-        return {"success": success, "url": url, "status_code": response.status_code}
+        log.info("Unsubscribe %s [%s]: %s → HTTP %d",
+                 msg.get("from_email"), method, url[:80], response.status_code)
+        return {"success": success, "url": url, "status_code": response.status_code, "method": method}
     except Exception as exc:
         log.warning("Unsubscribe failed for %s: %s", url[:80], exc)
         return {"success": False, "url": url, "reason": str(exc)}
