@@ -155,6 +155,41 @@ def _now() -> str:
     return datetime.utcnow().isoformat() + "Z"
 
 
+# Pricing per million tokens (input, output). Ollama = $0 (local).
+# Update when providers change pricing.
+_PRICING: dict[str, tuple[float, float]] = {
+    # Anthropic
+    "claude-opus-4-6":           (15.00, 75.00),
+    "claude-sonnet-4-6":          (3.00, 15.00),
+    "claude-haiku-4-5-20251001":  (0.80,  4.00),
+    "claude-haiku-4-5":           (0.80,  4.00),
+    # OpenAI
+    "gpt-4o":                     (2.50, 10.00),
+    "gpt-4o-mini":                (0.15,  0.60),
+    "gpt-4-turbo":               (10.00, 30.00),
+    # Google
+    "gemini-1.5-pro":             (1.25,  5.00),
+    "gemini-1.5-flash":           (0.075, 0.30),
+}
+
+
+def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """Estimate cost in USD. Returns 0.0 for local/unknown models."""
+    rates = _PRICING.get(model)
+    if not rates:
+        # Partial match — e.g. "claude-sonnet-4-6" matches "claude-sonnet"
+        model_lower = model.lower()
+        for key, r in _PRICING.items():
+            if key in model_lower or model_lower in key:
+                rates = r
+                break
+    if not rates:
+        return 0.0
+    input_cost = (input_tokens / 1_000_000) * rates[0]
+    output_cost = (output_tokens / 1_000_000) * rates[1]
+    return input_cost + output_cost
+
+
 class AgentDB:
     def __init__(self, db_path: str = "oap_agent.db"):
         self.db_path = db_path
@@ -628,7 +663,7 @@ class AgentDB:
         }
 
     def get_usage_summary(self, days: int = 30) -> dict:
-        """Get aggregated usage stats for the last N days."""
+        """Get aggregated usage stats for the last N days, including cost estimates."""
         from datetime import datetime, timedelta
         cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat() + "Z"
 
@@ -646,25 +681,33 @@ class AgentDB:
 
         total_input = 0
         total_output = 0
+        total_cost_usd = 0.0
         by_model: list[dict] = []
         for r in rows:
+            inp = r["total_input"] or 0
+            out = r["total_output"] or 0
+            cost = _estimate_cost(r["model"], inp, out)
             entry = {
                 "provider": r["provider"],
                 "model": r["model"],
                 "requests": r["requests"],
-                "input_tokens": r["total_input"],
-                "output_tokens": r["total_output"],
+                "input_tokens": inp,
+                "output_tokens": out,
+                "cost_usd": round(cost, 4),
             }
             by_model.append(entry)
-            total_input += r["total_input"]
-            total_output += r["total_output"]
+            total_input += inp
+            total_output += out
+            total_cost_usd += cost
 
         return {
             "period_days": days,
             "total_requests": sum(m["requests"] for m in by_model),
             "total_input_tokens": total_input,
             "total_output_tokens": total_output,
+            "total_cost_usd": round(total_cost_usd, 4),
             "by_model": by_model,
+            "note": "Ollama (local) costs reflect electricity/hardware only — shown as $0.00. Cloud model costs are estimates based on public pricing.",
         }
 
     # --- User Facts ---
