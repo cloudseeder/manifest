@@ -82,6 +82,10 @@ class EmailDB:
         if "list_unsubscribe" not in cols:
             self.conn.execute("ALTER TABLE messages ADD COLUMN list_unsubscribe TEXT")
             self.conn.commit()
+        if "prev_category" not in cols:
+            self.conn.execute("ALTER TABLE messages ADD COLUMN prev_category TEXT")
+            self.conn.execute("ALTER TABLE messages ADD COLUMN prev_priority TEXT")
+            self.conn.commit()
         # Manager tables
         self.conn.executescript("""
             CREATE TABLE IF NOT EXISTS email_preferences (
@@ -362,14 +366,30 @@ class EmailDB:
             return cur.rowcount
 
     def reset_category(self, category: str) -> int:
-        """Clear category/priority for messages with a specific category."""
+        """Snapshot category/priority into prev_* columns, then clear for reclassification."""
         with self._lock:
+            self.conn.execute(
+                "UPDATE messages SET prev_category = category, prev_priority = priority "
+                "WHERE category = ?",
+                (category,),
+            )
             cur = self.conn.execute(
-                "UPDATE messages SET category = NULL, priority = NULL WHERE category = ?",
+                "UPDATE messages SET category = NULL, priority = NULL WHERE prev_category = ?",
                 (category,),
             )
             self.conn.commit()
             return cur.rowcount
+
+    def get_reclassify_diff(self, prev_category: str, limit: int = 100) -> list[dict]:
+        """Return messages where classification changed from prev_category."""
+        rows = self.conn.execute(
+            "SELECT id, from_name, from_email, subject, prev_category, prev_priority, "
+            "category, priority FROM messages "
+            "WHERE prev_category = ? AND category IS NOT NULL AND category != prev_category "
+            "ORDER BY received_at DESC LIMIT ?",
+            (prev_category, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def set_classification(self, msg_id: str, category: str | None, priority: str | None) -> None:
         """Set both category and priority in one call."""

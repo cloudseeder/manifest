@@ -351,18 +351,31 @@ async def dispatch(req: DispatchRequest):
         # Targeted: reset only mailing-list messages, force escalation for accuracy
         if not _cfg or not _cfg.classifier.enabled:
             raise HTTPException(status_code=400, detail="Classifier not enabled")
+        if not _cfg.escalation or not _cfg.escalation.enabled:
+            raise HTTPException(status_code=400, detail="Escalation not enabled — configure escalation in config.yaml for accurate reclassification")
         reset = _db.reset_category("mailing-list")
-        log.info("Targeted reclassify: reset %d mailing-list messages", reset)
+        log.info("Targeted reclassify: reset %d mailing-list messages (escalation forced)", reset)
         from .classifier import classify_uncategorized
-        # Force escalation for this pass (better accuracy for personal vs. mailing-list)
-        escalation = _cfg.escalation if _cfg.escalation and _cfg.escalation.enabled else None
+        import dataclasses
+        # Force use_escalation=True for this pass regardless of config setting
+        forced_cfg = dataclasses.replace(_cfg.classifier, use_escalation=True)
         classified = 0
         while True:
-            batch = await classify_uncategorized(_cfg.classifier, _db, escalation)
+            batch = await classify_uncategorized(forced_cfg, _db, _cfg.escalation)
             classified += batch
             if batch == 0:
                 break
-        return {"reset": reset, "classified": classified, "used_escalation": escalation is not None}
+        return {"reset": reset, "classified": classified, "used_escalation": True}
+
+    elif action == "reclassify_diff":
+        # Show what changed in the last targeted reclassify
+        prev = req.category or "mailing-list"
+        changed = _db.get_reclassify_diff(prev, limit=req.limit)
+        return {
+            "prev_category": prev,
+            "changed_count": len(changed),
+            "changes": changed,
+        }
     elif action == "file":
         result = await file_messages()
         return result
