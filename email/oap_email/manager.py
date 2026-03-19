@@ -258,7 +258,7 @@ async def _call_llm_for_draft(system_prompt: str, user_msg: str, cfg) -> str | N
                             "Content-Type": "application/json",
                         },
                         json={
-                            "model": "claude-haiku-4-5-20251001",
+                            "model": "claude-3-5-haiku-20241022",
                             "max_tokens": 512,
                             "system": system_prompt,
                             "messages": [{"role": "user", "content": user_msg}],

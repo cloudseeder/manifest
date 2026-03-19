@@ -180,13 +180,15 @@ async def classify_message_escalated(
                 )
                 resp.raise_for_status()
                 data = resp.json()
+                if data.get("type") == "error":
+                    raise ValueError(f"Anthropic API error: {data.get('error', {}).get('message', data)}")
                 content = ""
                 for block in data.get("content", []):
                     if block.get("type") == "text":
                         content = block["text"]
                         break
                 if not content:
-                    log.warning("Empty content from Claude (stop_reason=%s blocks=%s) for %s",
+                    log.warning("Empty content from Claude — stop_reason=%s blocks=%s for %s",
                                 data.get("stop_reason"), [b.get("type") for b in data.get("content", [])],
                                 from_email)
         else:
