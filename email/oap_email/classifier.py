@@ -179,7 +179,12 @@ async def classify_message_escalated(
                     },
                 )
                 resp.raise_for_status()
-                data = resp.json()
+                try:
+                    data = resp.json()
+                except Exception:
+                    log.warning("Non-JSON response from Claude (status=%d body=%r) for %s",
+                                resp.status_code, resp.text[:200], from_email)
+                    return None
                 if data.get("type") == "error":
                     raise ValueError(f"Anthropic API error: {data.get('error', {}).get('message', data)}")
                 content = ""
