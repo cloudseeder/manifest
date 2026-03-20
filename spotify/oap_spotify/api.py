@@ -186,21 +186,9 @@ async def playlist_tracks(
         raise HTTPException(status_code=502, detail=str(e))
 
 
-@app.get("/proxy/artists/{artist_id}")
-async def artist(artist_id: str):
-    """Return artist metadata — genres, popularity, follower count."""
-    c = _require_client()
-    try:
-        return c.artist(artist_id)
-    except RuntimeError as e:
-        raise HTTPException(status_code=401, detail=str(e))
-    except Exception as e:
-        log.error("artist error: %s", e)
-        raise HTTPException(status_code=502, detail=str(e))
-
-
 # Query-param variants for tool-bridge compatibility (path params can't be
-# injected by the tool executor, so LLM tool calls use ?artist_id=... instead)
+# injected by the tool executor, so LLM tool calls use ?artist_id=... instead).
+# These MUST be defined before the /{artist_id} wildcard route.
 
 @app.get("/proxy/artists/related-artists")
 async def artist_related_by_query(
@@ -246,6 +234,21 @@ async def playlist_tracks_by_query(
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
         log.error("playlist_tracks error: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+# Path-param variants (for direct curl access — wildcard must come after static routes above)
+
+@app.get("/proxy/artists/{artist_id}")
+async def artist(artist_id: str):
+    """Return artist metadata — genres, popularity, follower count."""
+    c = _require_client()
+    try:
+        return c.artist(artist_id)
+    except RuntimeError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        log.error("artist error: %s", e)
         raise HTTPException(status_code=502, detail=str(e))
 
 
