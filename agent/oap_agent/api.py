@@ -287,7 +287,7 @@ _CONVERSATIONAL_PATTERNS = re.compile(
     r"thanks?(\s+you)?|thank\s+you|thx|ty"
     r"|you'?re\s+welcome"
     r"|ok(ay)?|got\s+it|understood|perfect|great|nice|cool|awesome|sounds\s+good"
-    r"|hi|hey|hello|yo|sup|howdy|good\s+(morning|afternoon|evening|night)"
+    r"|hi|hey|hello|yo|sup|what'?s\s+up|howdy|good\s+(morning|afternoon|evening|night)"
     r"|bye|goodbye|see\s+you|later|good\s*night|take\s+care"
     r"|yes|no|yep|nope|yeah|nah|sure|absolutely|definitely"
     r"|please|sorry|my\s+bad|no\s+worries"
@@ -399,7 +399,7 @@ def _is_conversational(message: str) -> bool:
 
 
 _GREETING_RE = re.compile(
-    r"^(hi|hey|hello|yo|sup|howdy|good\s+(morning|afternoon|evening))[\s?!.,]*$",
+    r"^(hi|hey|hello|yo|sup|what'?s\s+up|howdy|good\s+(morning|afternoon|evening))[\s?!.,]*$",
     re.IGNORECASE,
 )
 
