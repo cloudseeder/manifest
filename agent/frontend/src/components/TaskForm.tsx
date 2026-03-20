@@ -10,7 +10,7 @@ interface TaskFormProps {
 
 export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
   const [name, setName] = useState(task?.name || '')
-  const [prompt, setPrompt] = useState(task?.user_prompt || task?.prompt || '')
+  const [prompt, setPrompt] = useState(task?.prompt || task?.user_prompt || '')
   const [schedule, setSchedule] = useState(task?.schedule || '')
   const [models, setModels] = useState<string[]>([])
   const [model, setModel] = useState(task?.model || '')
