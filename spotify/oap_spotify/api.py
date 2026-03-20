@@ -78,7 +78,9 @@ async def auth_callback(code: str = Query(...), state: str | None = Query(None))
 @app.get("/health")
 async def health():
     c = _require_client()
-    return {"status": "ok", "authorized": c.is_authorized()}
+    authorized = c.is_authorized()
+    scopes = c.get_granted_scopes() if authorized else []
+    return {"status": "ok", "authorized": authorized, "scopes": scopes}
 
 
 # ---------------------------------------------------------------------------

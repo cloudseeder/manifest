@@ -91,10 +91,18 @@ class SpotifyClient:
         sp = self._client()
         return sp.current_user_saved_tracks(limit=limit)
 
+    def get_granted_scopes(self) -> list[str]:
+        """Return the scopes granted in the current cached token."""
+        token_info = self._auth.get_cached_token()
+        if not token_info:
+            return []
+        scope_str = token_info.get("scope", "")
+        return scope_str.split() if scope_str else []
+
     def create_playlist(self, name: str, description: str = "", public: bool = False) -> dict:
         sp = self._client()
-        user_id = sp.current_user()["id"]
-        return sp.user_playlist_create(user_id, name, public=public, description=description)
+        data = {"name": name, "public": public, "description": description}
+        return sp._post("me/playlists", payload=data)
 
     def add_tracks(self, playlist_id: str, track_uris: list[str]) -> dict:
         sp = self._client()
