@@ -76,3 +76,7 @@ class DispatchRequest(BaseModel):
     manager_action: str | None = None    # archive | unsubscribe | ignore | flag | draft_reply
     # Drafts
     draft_id: str | None = None
+    # Send / reply
+    to: str | None = None      # recipient email address for 'send' action
+    subject: str | None = None  # subject for 'send' action
+    body: str | None = None    # message body for 'send' or 'reply' action

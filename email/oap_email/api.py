@@ -540,6 +540,56 @@ async def dispatch(req: DispatchRequest):
         _db.log_action(draft["message_id"], "draft_sent", f"Sent to {draft.get('to_addr', {}).get('email', '')}")
         return sent
 
+    elif action == "reply":
+        if not _cfg or not _cfg.smtp.host:
+            raise HTTPException(status_code=503, detail="SMTP not configured")
+        msg_id = req.id
+        body = req.body
+        if not msg_id or not body:
+            raise HTTPException(status_code=400, detail="'id' (message to reply to) and 'body' required")
+        orig = _db.get_message(msg_id)
+        if not orig:
+            raise HTTPException(status_code=404, detail=f"Message {msg_id} not found")
+        subject = orig.get("subject", "")
+        if not subject.lower().startswith("re:"):
+            subject = f"Re: {subject}"
+        to_addr = {"name": orig.get("from_name", ""), "email": orig.get("from_email", "")}
+        thread_id = orig.get("message_id") or orig.get("thread_id") or msg_id
+        draft = _db.add_draft(msg_id, thread_id, body, subject, to_addr, notes="sent via reply action")
+        _db.update_draft_status(draft["id"], "approved")
+        draft["status"] = "approved"
+        from .smtp import send_draft
+        try:
+            await send_draft(_cfg.smtp, draft)
+        except Exception as exc:
+            log.error("SMTP reply failed for message %s: %s", msg_id, exc)
+            raise HTTPException(status_code=502, detail=f"SMTP send failed: {exc}")
+        _db.update_draft_status(draft["id"], "sent")
+        _db.log_action(msg_id, "reply_sent", f"Replied to {to_addr['email']}")
+        return {"status": "sent", "to": to_addr["email"], "subject": subject}
+
+    elif action == "send":
+        if not _cfg or not _cfg.smtp.host:
+            raise HTTPException(status_code=503, detail="SMTP not configured")
+        to = req.to
+        subject = req.subject
+        body = req.body
+        if not to or not subject or not body:
+            raise HTTPException(status_code=400, detail="'to', 'subject', and 'body' required")
+        to_addr = {"name": "", "email": to}
+        draft = _db.add_draft("", None, body, subject, to_addr, notes="sent via send action")
+        _db.update_draft_status(draft["id"], "approved")
+        draft["status"] = "approved"
+        from .smtp import send_draft
+        try:
+            await send_draft(_cfg.smtp, draft)
+        except Exception as exc:
+            log.error("SMTP send failed: %s", exc)
+            raise HTTPException(status_code=502, detail=f"SMTP send failed: {exc}")
+        _db.update_draft_status(draft["id"], "sent")
+        _db.log_action("", "email_sent", f"Sent to {to}: {subject}")
+        return {"status": "sent", "to": to, "subject": subject}
+
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
 
