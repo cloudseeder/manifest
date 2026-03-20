@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oap-spotify"
+version = "0.1.0"
+description = "OAP Spotify proxy — OAuth token manager and API proxy for AI agents"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "spotipy>=2.24",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+oap-spotify-api = "oap_spotify.api:main"

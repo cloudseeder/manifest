@@ -1,0 +1,19 @@
+{
+  "oap": "1.0",
+  "name": "spotify-related-artists",
+  "description": "Get Spotify artists similar to a given artist. Use for questions like 'what artists are similar to Radiohead?', 'find artists like Bicep', 'who sounds like Pink Floyd?', 'recommend artists similar to X'. Requires a Spotify artist ID — use spotify-search first to get the ID.",
+  "input": {
+    "format": "text/plain",
+    "description": "Path parameter: artist_id (Spotify artist ID, e.g. 4Z8W4fKeB5YxbusRsdQVPb). Get IDs from spotify-search."
+  },
+  "output": {
+    "format": "application/json",
+    "description": "Response with artists array. Each artist has name, genres, popularity (0-100), and Spotify ID."
+  },
+  "invoke": {
+    "method": "GET",
+    "url": "http://localhost:8306/proxy/artists/{artist_id}/related-artists"
+  },
+  "usage": "GET /proxy/artists/{artist_id}/related-artists",
+  "tags": ["spotify", "music", "artists", "similar", "recommendations", "discovery"]
+}

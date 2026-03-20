@@ -1,0 +1,26 @@
+# OAP Spotify Proxy configuration
+#
+# Copy to config.yaml and fill in your Spotify app credentials.
+# Client ID/secret can also be set via SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET env vars.
+#
+# Setup:
+#   1. Create a Spotify app at https://developer.spotify.com/dashboard
+#   2. Add http://localhost:8306/auth/callback as a Redirect URI
+#   3. Fill in client_id and client_secret below
+#   4. Start the service, then visit http://localhost:8306/auth/login to authorize
+
+api:
+  host: "127.0.0.1"
+  port: 8306
+
+spotify:
+  client_id: "your-client-id"
+  client_secret: "your-client-secret"
+  redirect_uri: "http://localhost:8306/auth/callback"
+  token_cache_path: ".spotify_token_cache"  # relative to CWD, or absolute path
+  scopes:
+    - user-top-read
+    - user-read-recently-played
+    - playlist-read-private
+    - playlist-read-collaborative
+    - user-library-read

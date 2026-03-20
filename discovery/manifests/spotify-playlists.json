@@ -1,0 +1,19 @@
+{
+  "oap": "1.0",
+  "name": "spotify-playlists",
+  "description": "Get the user's Spotify playlists (owned and followed). Use for questions like 'show my playlists', 'what playlists do I have?', 'list my Spotify playlists'. Returns playlist names, track counts, and IDs. Use spotify-playlist-tracks to get the songs in a specific playlist.",
+  "input": {
+    "format": "text/plain",
+    "description": "Query parameters: limit (1-50, default 20)."
+  },
+  "output": {
+    "format": "application/json",
+    "description": "Response with items array. Each playlist has name, id, tracks.total (track count), owner, and public flag."
+  },
+  "invoke": {
+    "method": "GET",
+    "url": "http://localhost:8306/proxy/me/playlists"
+  },
+  "usage": "GET /proxy/me/playlists?limit=50",
+  "tags": ["spotify", "music", "playlists", "listening"]
+}

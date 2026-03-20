@@ -33,9 +33,23 @@ for cmd in oap-api oap-agent-api oap-reminder-api oap-email-api; do
         echo "  pip install -e agent"
         echo "  pip install -e reminder"
         echo "  pip install -e email"
+        echo "  pip install -e spotify  # optional"
         exit 1
     fi
 done
+
+SPOTIFY_ENABLED=false
+if [ -f "$REPO_DIR/spotify/config.yaml" ] && [ -f "$VENV_DIR/bin/oap-spotify-api" ]; then
+    SPOTIFY_ENABLED=true
+else
+    echo "Note: Spotify proxy skipped — no config or not installed."
+    echo "  To enable it:"
+    echo "    cp spotify/config.yaml.example spotify/config.yaml"
+    echo "    # Edit spotify/config.yaml with your Spotify app credentials"
+    echo "    pip install -e spotify"
+    echo "    ./setup.sh"
+    echo ""
+fi
 
 EMAIL_ENABLED=false
 if [ -f "$REPO_DIR/email/config.yaml" ]; then
@@ -123,6 +137,15 @@ write_plist() {
     if [ "$include_secret" = "yes" ]; then
         env_keys+=("OAP_BACKEND_SECRET"); env_vals+=("$SECRET")
     fi
+    # Inject Spotify credentials
+    if [ "$label" = "com.oap.spotify" ]; then
+        if [ -n "${SPOTIFY_CLIENT_ID:-}" ]; then
+            env_keys+=("SPOTIFY_CLIENT_ID"); env_vals+=("$SPOTIFY_CLIENT_ID")
+        fi
+        if [ -n "${SPOTIFY_CLIENT_SECRET:-}" ]; then
+            env_keys+=("SPOTIFY_CLIENT_SECRET"); env_vals+=("$SPOTIFY_CLIENT_SECRET")
+        fi
+    fi
     # Inject Anthropic key into services that use LLM escalation
     if [ -n "${ANTHROPIC_KEY:-}" ]; then
         case "$label" in
@@ -207,6 +230,13 @@ write_plist "com.oap.reminder" \
     "$REPO_DIR/reminder" \
     "no"
 
+if [ "$SPOTIFY_ENABLED" = true ]; then
+    write_plist "com.oap.spotify" \
+        "$VENV_DIR/bin/oap-spotify-api" \
+        "$REPO_DIR/spotify" \
+        "no"
+fi
+
 if [ "$EMAIL_ENABLED" = true ]; then
     write_plist "com.oap.email" \
         "$VENV_DIR/bin/oap-email-api" \
@@ -282,6 +312,9 @@ echo ""
 
 echo "Loading services..."
 SERVICES="com.oap.discovery com.oap.agent com.oap.reminder"
+if [ "$SPOTIFY_ENABLED" = true ]; then
+    SERVICES="$SERVICES com.oap.spotify"
+fi
 if [ "$EMAIL_ENABLED" = true ]; then
     SERVICES="$SERVICES com.oap.email com.oap.email-scan"
 fi
@@ -306,6 +339,9 @@ ELAPSED=0
 
 # Build list of services to check
 REMAINING="8300:Discovery:discovery:/health 8303:Agent:agent:/v1/agent/health 8304:Reminder:reminder:/reminders"
+if [ "$SPOTIFY_ENABLED" = true ]; then
+    REMAINING="$REMAINING 8306:Spotify:spotify:/health"
+fi
 if [ "$EMAIL_ENABLED" = true ]; then
     REMAINING="$REMAINING 8305:Email:email:/health"
 fi
@@ -348,6 +384,9 @@ echo "Logs:"
 echo "  tail -f /tmp/com.oap.discovery.err"
 echo "  tail -f /tmp/com.oap.agent.err"
 echo "  tail -f /tmp/com.oap.reminder.err"
+if [ "$SPOTIFY_ENABLED" = true ]; then
+    echo "  tail -f /tmp/com.oap.spotify.err"
+fi
 if [ "$EMAIL_ENABLED" = true ]; then
     echo "  tail -f /tmp/com.oap.email.err"
 fi

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Manifest — a companion chat app with autonomous task execution, powered by local AI. Four services running on a Mac Mini: discovery (tool bridge + experience cache), agent (chat UI + task scheduler), reminder, and email scanner. All inter-service communication is HTTP. The agent never talks to Ollama directly — it calls `/v1/chat` on the discovery service for all LLM and tool work.
+Manifest — a companion chat app with autonomous task execution, powered by local AI. Five services running on a Mac Mini: discovery (tool bridge + experience cache), agent (chat UI + task scheduler), reminder, email scanner, and Spotify proxy. All inter-service communication is HTTP. The agent never talks to Ollama directly — it calls `/v1/chat` on the discovery service for all LLM and tool work.
 
 Extracted from the [OAP monorepo](https://github.com/cloudseeder/oap-dev). The OAP repo retains the spec, Next.js website, trust service, dashboard, and MCP server.
 
@@ -30,6 +30,10 @@ manifest/
 │   ├── pyproject.toml
 │   ├── config.yaml.example
 │   └── oap_email/
+├── spotify/                     # Spotify OAuth proxy (optional)
+│   ├── pyproject.toml
+│   ├── config.yaml.example
+│   └── oap_spotify/
 └── docs/
     ├── AGENT.md                 # Architecture rationale
     ├── EMAIL.md                 # Email classifier + priority + overrides
@@ -48,6 +52,7 @@ source ~/.oap-venv/bin/activate
 pip install -e discovery
 pip install -e agent
 pip install -e reminder
+pip install -e spotify  # optional — requires Spotify app credentials
 pip install -e email
 
 # Copy configs
@@ -170,6 +175,30 @@ IMAP email scanner for AI agents with LLM-powered classification and auto-filing
 - **Timestamp normalization**: All `received_at` timestamps are stored in UTC (`+00:00`) for correct SQLite string comparison across timezone offsets. Migration auto-normalizes existing data on startup.
 - **Query parser**: Supports `OR` between terms and field prefixes (`from:`, `to:`, `subject:`, `body:`). Examples: `from:Amy OR from:Keric`, `from:amy@netgate.net subject:invoice`.
 - Manifest: `discovery/manifests/oap-email.json`
+
+### Spotify Proxy (`spotify/oap_spotify/`)
+
+Thin OAuth proxy for Spotify Web API. Manages the OAuth 2.0 token lifecycle via Spotipy and exposes a subset of Spotify endpoints at `/proxy/...` that the LLM can call without handling auth. Optional service — only enabled when `spotify/config.yaml` exists and the package is installed.
+
+- Entry point: `oap-spotify-api` (:8306)
+- Config: `config.yaml` (Spotify `client_id`, `client_secret`, `redirect_uri`, `token_cache_path`)
+- Credentials: `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` env vars override config
+- Key files: `config.py`, `spotify_client.py` (Spotipy wrapper), `api.py` (FastAPI + OAuth + proxy routes)
+- **OAuth flow**: `GET /auth/login` → Spotify authorization page → `GET /auth/callback?code=...` → token cached to file. Run once; Spotipy auto-refreshes from cache.
+- **Proxy endpoints** (all under `/proxy/`):
+  - `GET /proxy/me/top/artists?time_range=short_term|medium_term|long_term&limit=20`
+  - `GET /proxy/me/top/tracks?time_range=...&limit=20`
+  - `GET /proxy/me/player/recently-played?limit=20`
+  - `GET /proxy/search?q=...&type=track,artist,album,playlist&limit=20`
+  - `GET /proxy/me/playlists`
+  - `GET /proxy/playlists/{id}/tracks`
+  - `GET /proxy/artists/{id}` — artist metadata (genres, popularity)
+  - `GET /proxy/artists/{id}/top-tracks`
+  - `GET /proxy/artists/{id}/related-artists`
+  - `GET /proxy/me/tracks` — saved/liked tracks
+- **Manifests**: `discovery/manifests/spotify-top-artists.json`, `spotify-top-tracks.json`, `spotify-recently-played.json`, `spotify-search.json`, `spotify-playlists.json`, `spotify-related-artists.json`
+- **Note**: Spotify deprecated `/audio-features` and `/recommendations` for new apps. Taste modeling uses artist metadata, genres, and top/recent data instead — passed to Claude/qwen3 for interpretation.
+- **Spotify app setup**: Create app at https://developer.spotify.com/dashboard, add `http://localhost:8306/auth/callback` as a Redirect URI.
 
 ## Key Design Principles
 

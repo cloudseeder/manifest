@@ -1,0 +1,19 @@
+{
+  "oap": "1.0",
+  "name": "spotify-search",
+  "description": "Search the Spotify catalog for tracks, artists, albums, or playlists. Use for questions like 'find albums by Radiohead', 'search for jazz piano tracks', 'look up the artist Bicep', 'find the song Karma Police'. Returns matching results from Spotify's full catalog.",
+  "input": {
+    "format": "text/plain",
+    "description": "Query parameters: q (required, search query string), type (comma-separated: track,artist,album,playlist — default track,artist), limit (1-50, default 20)."
+  },
+  "output": {
+    "format": "application/json",
+    "description": "Search results object with keys matching requested types (tracks, artists, albums, playlists). Each contains an items array with name, ID, and type-specific fields."
+  },
+  "invoke": {
+    "method": "GET",
+    "url": "http://localhost:8306/proxy/search"
+  },
+  "usage": "GET /proxy/search?q=radiohead&type=artist,album&limit=10",
+  "tags": ["spotify", "music", "search", "catalog", "artists", "tracks", "albums"]
+}
