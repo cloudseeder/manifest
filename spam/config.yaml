@@ -1,0 +1,63 @@
+# IMAP Spam Filter Configuration
+# Copy to config.local.yaml and fill in your credentials
+
+imap:
+  host: "imap.example.com"
+  port: 993
+  username: "you@example.com"
+  password: "your-app-password"  # Use app-specific password, not main password
+  use_ssl: true
+
+folders:
+  inbox: "INBOX"
+  quarantine: "Quarantine"       # Created automatically if missing
+  review: "Review"               # For low-confidence classifications
+
+ollama:
+  base_url: "http://localhost:11434"
+  model: "qwen2.5:0.5b"          # Tiny model — fast inference
+  # model: "qwen2.5:1.5b"        # Slightly better accuracy, still fast
+  timeout: 30                     # seconds per classification
+
+classifier:
+  # Messages scoring above this are quarantined automatically
+  quarantine_threshold: 0.85
+  # Messages scoring below quarantine but above this get tagged for review
+  review_threshold: 0.5
+  # Max chars of email body to send to the model
+  max_body_length: 1500
+  # Batch size for processing
+  batch_size: 50
+
+heuristics:
+  # Known spam sender domains (exact match)
+  blocked_domains:
+    - "spam-kingdom.com"
+    - "buy-now-cheap.net"
+
+  # Patterns in subject lines (case-insensitive regex)
+  spam_subject_patterns:
+    - "(?i)\\bcongratulations?\\b.*\\bwon\\b"
+    - "(?i)\\bunsubscribe\\b.*\\bclick here\\b"
+    - "(?i)\\burgent\\b.*\\baccount\\b.*\\bsuspend"
+    - "(?i)\\b(viagra|cialis|lottery|nigerian? prince)\\b"
+    - "(?i)\\bact now\\b.*\\blimited time\\b"
+
+  # Trusted sender domains that skip classification entirely
+  allowlisted_domains:
+    - "google.com"
+    - "apple.com"
+    - "github.com"
+    - "anthropic.com"
+
+  # Header checks
+  require_spf_pass: false         # Set true to flag SPF failures
+  require_dkim_pass: false        # Set true to flag DKIM failures
+
+logging:
+  level: "INFO"                   # DEBUG for development
+  file: "spam_filter.log"
+
+# Processing mode
+mode: "scan"                      # "scan" = process once, "watch" = poll continuously
+poll_interval: 300                # seconds between polls in watch mode

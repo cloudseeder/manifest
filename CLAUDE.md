@@ -196,8 +196,8 @@ Thin OAuth proxy for Spotify Web API. Manages the OAuth 2.0 token lifecycle via 
   - `GET /proxy/artists/{id}/top-tracks`
   - `GET /proxy/artists/{id}/related-artists`
   - `GET /proxy/me/tracks` — saved/liked tracks
-- **Manifests**: `discovery/manifests/spotify-top-artists.json`, `spotify-top-tracks.json`, `spotify-recently-played.json`, `spotify-search.json`, `spotify-playlists.json`, `spotify-related-artists.json`
-- **Note**: Spotify deprecated `/audio-features` and `/recommendations` for new apps. Taste modeling uses artist metadata, genres, and top/recent data instead — passed to Claude/qwen3 for interpretation.
+- **Manifests**: `discovery/manifests/spotify-top-artists.json`, `spotify-top-tracks.json`, `spotify-recently-played.json`, `spotify-search.json`, `spotify-playlists.json`
+- **Note**: Spotify restricts several endpoints for new apps: `/audio-features`, `/recommendations`, `/artists/{id}/related-artists`. Taste modeling uses genres, top artists/tracks, and recent listening data instead — passed to Claude/qwen3 for interpretation.
 - **Spotify app setup**: Create app at https://developer.spotify.com/dashboard, add `http://localhost:8306/auth/callback` as a Redirect URI.
 
 ## Key Design Principles
