@@ -859,6 +859,17 @@ async def chat_proxy(req: ChatRequest) -> Any:
             if cached_tools:
                 tools, registry = cached_tools, cached_registry
                 exp_cache_hit = True
+                # Supplement cache hit with discovery so multi-step workflows
+                # get all needed tools, not just the cached primary tool.
+                extra_tools, extra_registry, _ = await _discover_tools(
+                    engine, store, last_user_msg, req.oap_top_k,
+                    fingerprint=exp_fingerprint,
+                )
+                for et in extra_tools:
+                    name = et.function.name
+                    if name not in registry and len(tools) < MAX_INJECTED_TOOLS:
+                        tools.append(et)
+                        registry[name] = extra_registry[name]
                 discovered_usage = [
                     entry.manifest.get("usage")
                     for entry in registry.values()
