@@ -199,6 +199,56 @@ async def artist(artist_id: str):
         raise HTTPException(status_code=502, detail=str(e))
 
 
+# Query-param variants for tool-bridge compatibility (path params can't be
+# injected by the tool executor, so LLM tool calls use ?artist_id=... instead)
+
+@app.get("/proxy/artists/related-artists")
+async def artist_related_by_query(
+    artist_id: str = Query(..., description="Spotify artist ID"),
+):
+    """Return artists similar to a given artist (query-param variant)."""
+    c = _require_client()
+    try:
+        return c.artist_related(artist_id)
+    except RuntimeError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        log.error("artist_related error: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/proxy/artists/top-tracks")
+async def artist_top_tracks_by_query(
+    artist_id: str = Query(..., description="Spotify artist ID"),
+    country: str = Query("US"),
+):
+    """Return an artist's top tracks (query-param variant)."""
+    c = _require_client()
+    try:
+        return c.artist_top_tracks(artist_id, country=country)
+    except RuntimeError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        log.error("artist_top_tracks error: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/proxy/playlist/tracks")
+async def playlist_tracks_by_query(
+    playlist_id: str = Query(..., description="Spotify playlist ID"),
+    limit: int = Query(50, ge=1, le=100),
+):
+    """Return tracks from a playlist (query-param variant)."""
+    c = _require_client()
+    try:
+        return c.playlist_tracks(playlist_id, limit=limit)
+    except RuntimeError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        log.error("playlist_tracks error: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 @app.get("/proxy/artists/{artist_id}/top-tracks")
 async def artist_top_tracks(
     artist_id: str,
