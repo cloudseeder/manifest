@@ -13,6 +13,26 @@ from fastapi.responses import RedirectResponse
 from .config import load_config
 from .spotify_client import SpotifyClient
 
+
+def _slim_track(track: dict) -> dict:
+    """Strip a full Spotify track object to just what the LLM needs."""
+    return {
+        "uri": track.get("uri", ""),
+        "name": track.get("name", ""),
+        "artists": [a.get("name", "") for a in track.get("artists", [])],
+        "id": track.get("id", ""),
+    }
+
+
+def _slim_artist(artist: dict) -> dict:
+    """Strip a full Spotify artist object to just what the LLM needs."""
+    return {
+        "id": artist.get("id", ""),
+        "name": artist.get("name", ""),
+        "genres": artist.get("genres", []),
+        "popularity": artist.get("popularity", 0),
+    }
+
 log = logging.getLogger("oap.spotify")
 
 _client: SpotifyClient | None = None
@@ -98,7 +118,9 @@ async def top_artists(
     """
     c = _require_client()
     try:
-        return c.top_artists(time_range=time_range, limit=limit)
+        data = c.top_artists(time_range=time_range, limit=limit)
+        data["items"] = [_slim_artist(a) for a in data.get("items", [])]
+        return data
     except RuntimeError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
@@ -117,7 +139,9 @@ async def top_tracks(
     """
     c = _require_client()
     try:
-        return c.top_tracks(time_range=time_range, limit=limit)
+        data = c.top_tracks(time_range=time_range, limit=limit)
+        data["items"] = [_slim_track(t) for t in data.get("items", [])]
+        return data
     except RuntimeError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
@@ -132,7 +156,13 @@ async def recently_played(
     """Return recently played tracks."""
     c = _require_client()
     try:
-        return c.recently_played(limit=limit)
+        data = c.recently_played(limit=limit)
+        data["items"] = [
+            {"played_at": item.get("played_at", ""), "track": _slim_track(item["track"])}
+            for item in data.get("items", [])
+            if item.get("track")
+        ]
+        return data
     except RuntimeError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
