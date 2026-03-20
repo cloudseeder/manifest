@@ -325,7 +325,8 @@ def _is_conversational_fast(message: str) -> bool | None:
         return False
     # Task-related nouns anywhere → definitely needs tools
     _task_nouns = re.compile(
-        r"\b(remind|reminder|email|weather|news|stock|task|schedule|calendar|search|find|look\s*up)\b",
+        r"\b(remind|reminder|email|weather|news|stock|task|schedule|calendar|search|find|look\s*up"
+        r"|spotify|playlist|song|track|artist|album|music)\b",
         re.IGNORECASE,
     )
     if _task_nouns.search(stripped):
@@ -338,7 +339,8 @@ _CLASSIFY_SYSTEM = (
     "Classify the user's message as either 'tools' or 'conversational'.\n\n"
     "'tools' — the user wants to DO something that requires an external service: "
     "check reminders, look up weather, search email, complete a task, "
-    "run a command, or modify data.\n\n"
+    "run a command, modify data, or interact with Spotify (play music, "
+    "create playlists, search artists/tracks, check listening history).\n\n"
     "'conversational' — the user is chatting, sharing personal info, asking about "
     "themselves or people they know, recalling preferences, making small talk, "
     "or asking questions that can be answered from the provided memory/context. "
