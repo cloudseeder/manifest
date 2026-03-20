@@ -1,0 +1,23 @@
+{
+  "oap": "1.0",
+  "name": "spotify-add-tracks",
+  "description": "Add tracks to an existing Spotify playlist by URI. Use after creating a playlist or when asked to 'add songs to a playlist', 'add these tracks', 'populate a playlist'. Track URIs come from spotify-top-tracks or spotify-artists-top-tracks results (the uri field on each track, format: spotify:track:ID). Call spotify-create-playlist first if the playlist doesn't exist yet.",
+  "input": {
+    "format": "application/json",
+    "description": "playlist_id is the Spotify playlist ID (required, from spotify-create-playlist result). track_uris is a list of Spotify track URIs (required, format: spotify:track:ID — get from the uri field in top-tracks or search results).",
+    "parameters": {
+      "playlist_id": {"type": "string", "description": "Spotify playlist ID (from create-playlist result or existing playlist)", "required": true},
+      "track_uris": {"type": "array", "description": "List of Spotify track URIs (spotify:track:ID format) to add", "required": true}
+    }
+  },
+  "output": {
+    "format": "application/json",
+    "description": "Spotify snapshot_id confirming the tracks were added."
+  },
+  "invoke": {
+    "method": "POST",
+    "url": "http://localhost:8306/proxy/playlists/add-tracks"
+  },
+  "usage": "POST /proxy/playlists/add-tracks {playlist_id, track_uris: [spotify:track:ID, ...]}",
+  "tags": ["spotify", "music", "playlist", "add", "tracks", "write"]
+}

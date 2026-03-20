@@ -238,6 +238,57 @@ async def playlist_tracks_by_query(
         raise HTTPException(status_code=502, detail=str(e))
 
 
+# ---------------------------------------------------------------------------
+# Playlist write endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/proxy/me/playlists")
+async def create_playlist(body: dict):
+    """Create a new private Spotify playlist.
+
+    Body: name (required), description (optional), public (optional, default false).
+    Returns the new playlist object including its id.
+    """
+    c = _require_client()
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="'name' is required")
+    description = body.get("description", "")
+    public = bool(body.get("public", False))
+    try:
+        return c.create_playlist(name, description=description, public=public)
+    except RuntimeError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        log.error("create_playlist error: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.post("/proxy/playlists/add-tracks")
+async def add_tracks(body: dict):
+    """Add tracks to an existing Spotify playlist.
+
+    Body: playlist_id (required), track_uris (required, list of spotify:track:ID strings).
+    Returns Spotify snapshot_id on success.
+    """
+    c = _require_client()
+    playlist_id = (body.get("playlist_id") or "").strip()
+    track_uris = body.get("track_uris") or []
+    if not playlist_id:
+        raise HTTPException(status_code=400, detail="'playlist_id' is required")
+    if not track_uris:
+        raise HTTPException(status_code=400, detail="'track_uris' is required")
+    if isinstance(track_uris, str):
+        track_uris = [u.strip() for u in track_uris.split(",") if u.strip()]
+    try:
+        return c.add_tracks(playlist_id, track_uris)
+    except RuntimeError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        log.error("add_tracks error: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 # Path-param variants (for direct curl access — wildcard must come after static routes above)
 
 @app.get("/proxy/artists/{artist_id}")

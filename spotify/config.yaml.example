@@ -24,3 +24,5 @@ spotify:
     - playlist-read-private
     - playlist-read-collaborative
     - user-library-read
+    - playlist-modify-private
+    - playlist-modify-public

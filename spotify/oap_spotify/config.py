@@ -21,6 +21,8 @@ class SpotifyConfig:
         "playlist-read-private",
         "playlist-read-collaborative",
         "user-library-read",
+        "playlist-modify-private",
+        "playlist-modify-public",
     ])
     # Where spotipy caches the OAuth token
     token_cache_path: str = ".spotify_token_cache"

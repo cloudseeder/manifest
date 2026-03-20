@@ -90,3 +90,12 @@ class SpotifyClient:
     def saved_tracks(self, limit: int = 50) -> dict:
         sp = self._client()
         return sp.current_user_saved_tracks(limit=limit)
+
+    def create_playlist(self, name: str, description: str = "", public: bool = False) -> dict:
+        sp = self._client()
+        user_id = sp.current_user()["id"]
+        return sp.user_playlist_create(user_id, name, public=public, description=description)
+
+    def add_tracks(self, playlist_id: str, track_uris: list[str]) -> dict:
+        sp = self._client()
+        return sp.playlist_add_items(playlist_id, track_uris)

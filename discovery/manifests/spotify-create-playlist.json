@@ -1,0 +1,24 @@
+{
+  "oap": "1.0",
+  "name": "spotify-create-playlist",
+  "description": "Create a new Spotify playlist. Use when asked to 'create a playlist', 'make a new playlist', 'build a playlist called X'. Returns the new playlist object including its id, which is needed to add tracks. Playlists are private by default.",
+  "input": {
+    "format": "application/json",
+    "description": "name is the playlist title (required). description is optional text shown in Spotify. public controls visibility (default false = private).",
+    "parameters": {
+      "name": {"type": "string", "description": "Playlist name (required)", "required": true},
+      "description": {"type": "string", "description": "Optional playlist description shown in Spotify", "required": false},
+      "public": {"type": "boolean", "description": "Make playlist public (default: false = private)", "required": false}
+    }
+  },
+  "output": {
+    "format": "application/json",
+    "description": "New playlist object with id (use this to add tracks), name, uri, and external_urls.spotify link."
+  },
+  "invoke": {
+    "method": "POST",
+    "url": "http://localhost:8306/proxy/me/playlists"
+  },
+  "usage": "POST /proxy/me/playlists {name, description?, public?} → playlist object with id",
+  "tags": ["spotify", "music", "playlist", "create", "write"]
+}
