@@ -63,9 +63,9 @@ class SpotifyClient:
         sp = self._client()
         return sp.current_user_recently_played(limit=limit)
 
-    def search(self, q: str, types: str = "track,artist", limit: int = 20) -> dict:
+    def search(self, q: str, types: str = "track,artist", limit: int = 10, market: str = "US") -> dict:
         sp = self._client()
-        return sp.search(q=q, type=types, limit=limit)
+        return sp.search(q=q, type=types, limit=limit, market=market)
 
     def playlists(self, limit: int = 20) -> dict:
         sp = self._client()
