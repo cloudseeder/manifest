@@ -73,12 +73,33 @@ def _find_config() -> str:
 
 
 async def _index_local_manifests() -> None:
-    """Index manifest files from the manifests/ directory next to the package."""
+    """Index manifest files from the manifests/ directory next to the package.
+
+    Also prunes any local/* entries in the vector and FTS stores that no longer
+    have a corresponding file on disk — so removing a .json file takes effect
+    on the next restart without manual ChromaDB surgery.
+    """
     from .validate import validate_manifest
 
     manifests_dir = Path(__file__).parent.parent / "manifests"
     if not manifests_dir.exists():
         return
+
+    # Build the set of domains that currently exist on disk
+    on_disk: set[str] = {
+        f"local/{p.stem}" for p in manifests_dir.glob("*.json")
+    }
+
+    # Prune stale local/* entries from the vector store
+    pruned = 0
+    for entry in _store.list_domains():
+        domain = entry["domain"]
+        if domain.startswith("local/") and domain not in on_disk:
+            _store.delete_manifest(domain)
+            if _fts_store is not None:
+                _fts_store.delete_manifest(domain)
+            log.info("Pruned removed manifest: %s", domain)
+            pruned += 1
 
     count = 0
     for path in sorted(manifests_dir.glob("*.json")):
@@ -98,8 +119,7 @@ async def _index_local_manifests() -> None:
             _fts_store.upsert_manifest(domain, data)
         count += 1
 
-    if count:
-        log.info("Indexed %d local manifest(s)", count)
+    log.info("Indexed %d local manifest(s), pruned %d removed", count, pruned)
 
 
 async def _crawl_seed_domains() -> None:

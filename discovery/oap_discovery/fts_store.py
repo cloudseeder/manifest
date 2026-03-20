@@ -144,6 +144,11 @@ class FTSStore:
             for d, n, desc in rows
         ]
 
+    def delete_manifest(self, domain: str) -> None:
+        """Remove a manifest from the FTS index by domain."""
+        self._conn.execute("DELETE FROM manifests WHERE domain = ?", (domain,))
+        self._conn.commit()
+
     def count(self) -> int:
         """Return number of indexed manifests."""
         row = self._conn.execute("SELECT COUNT(*) FROM manifests").fetchone()

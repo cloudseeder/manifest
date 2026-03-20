@@ -106,6 +106,10 @@ class ManifestStore:
             )
         return entries
 
+    def delete_manifest(self, domain: str) -> None:
+        """Remove a manifest from the vector store by domain."""
+        self._collection.delete(ids=[domain])
+
     def count(self) -> int:
         """Return number of indexed manifests."""
         return self._collection.count()
