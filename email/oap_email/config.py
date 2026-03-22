@@ -101,10 +101,10 @@ class AutoFileConfig:
     # Map category → IMAP folder name (created if missing)
     folders: dict[str, str] = field(default_factory=lambda: {
         "personal": "INBOX",
-        "machine": "Machine",
-        "mailing-list": "Mailing-List",
-        "spam": "Spam",
-        "offers": "Offers",
+        "machine": "machine",
+        "mailing-list": "mailing-list",
+        "spam": "spam",
+        "offers": "offers",
     })
 
 
@@ -140,7 +140,7 @@ class ManagerConfig:
     unsubscribe_enabled: bool = True
     draft_reply_enabled: bool = False
     learning_enabled: bool = True
-    archive_folder: str = "Archive"
+    archive_folder: str = "archive"
     draft_reply_categories: list[str] = field(default_factory=lambda: ["personal"])
     draft_reply_priorities: list[str] = field(default_factory=lambda: ["urgent", "important"])
     discovery_url: str = "http://localhost:8300"
