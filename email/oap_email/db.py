@@ -94,6 +94,10 @@ class EmailDB:
             self.conn.execute("ALTER TABLE messages ADD COLUMN auth_results TEXT")
             self.conn.execute("ALTER TABLE messages ADD COLUMN x_spam_status TEXT")
             self.conn.commit()
+        if "x_spam_flag" not in cols:
+            self.conn.execute("ALTER TABLE messages ADD COLUMN x_spam_flag TEXT")
+            self.conn.execute("ALTER TABLE messages ADD COLUMN x_spam_score REAL")
+            self.conn.commit()
         # Manager tables
         self.conn.executescript("""
             CREATE TABLE IF NOT EXISTS email_preferences (
@@ -202,6 +206,8 @@ class EmailDB:
         received_spf: str = "",
         auth_results: str = "",
         x_spam_status: str = "",
+        x_spam_flag: str = "",
+        x_spam_score: float | None = None,
     ) -> None:
         with self._lock:
             self.conn.execute(
@@ -210,8 +216,8 @@ class EmailDB:
                     to_addrs, cc_addrs, subject, snippet, body_text,
                     received_at, is_read, is_flagged, has_attachments,
                     attachments, uid, cached_at, list_unsubscribe, list_unsubscribe_post,
-                    received_spf, auth_results, x_spam_status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    received_spf, auth_results, x_spam_status, x_spam_flag, x_spam_score)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET
                     is_read = excluded.is_read,
                     is_flagged = excluded.is_flagged,
@@ -220,6 +226,8 @@ class EmailDB:
                     received_spf = excluded.received_spf,
                     auth_results = excluded.auth_results,
                     x_spam_status = excluded.x_spam_status,
+                    x_spam_flag = excluded.x_spam_flag,
+                    x_spam_score = excluded.x_spam_score,
                     cached_at = excluded.cached_at""",
                 (
                     id, message_id, thread_id, folder, from_name, from_email,
@@ -229,6 +237,7 @@ class EmailDB:
                     int(has_attachments), json.dumps(attachments),
                     uid, _now(), list_unsubscribe or "", list_unsubscribe_post or "",
                     received_spf or "", auth_results or "", x_spam_status or "",
+                    x_spam_flag or "", x_spam_score,
                 ),
             )
             self.conn.commit()

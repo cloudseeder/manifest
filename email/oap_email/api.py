@@ -96,6 +96,8 @@ async def scan():
                 received_spf=msg.get("received_spf", ""),
                 auth_results=msg.get("auth_results", ""),
                 x_spam_status=msg.get("x_spam_status", ""),
+                x_spam_flag=msg.get("x_spam_flag", ""),
+                x_spam_score=msg.get("x_spam_score"),
             )
         total += len(messages)
 

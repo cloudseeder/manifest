@@ -363,15 +363,18 @@ async def classify_uncategorized(
                      category, priority, from_email, row.get("subject", "")[:50])
             continue
 
-        # Tier: header heuristics (blocked domain, upstream spam header)
-        if spam_cfg and spam_cfg.enabled:
-            is_spam, heuristic_tag = _spam_heuristics(row, blocked_domains)
-            if is_spam:
-                db.set_classification(row["id"], "spam", "noise")
-                classified += 1
-                log.info("%-13s %-13s %s %s — %s",
-                         "spam", "noise", heuristic_tag, from_email, row.get("subject", "")[:50])
-                continue
+        # Tier: header heuristics (blocked domain, upstream spam header).
+        # SA X-Spam-Flag check always runs — SA is in the Exim delivery path
+        # unconditionally. blocked_domains check requires spam_cfg.enabled.
+        is_spam, heuristic_tag = _spam_heuristics(
+            row, blocked_domains if (spam_cfg and spam_cfg.enabled) else set()
+        )
+        if is_spam:
+            db.set_classification(row["id"], "spam", "noise")
+            classified += 1
+            log.info("%-13s %-13s %s %s — %s",
+                     "spam", "noise", heuristic_tag, from_email, row.get("subject", "")[:50])
+            continue
 
         # Tier: fast local spam model (qwen3:2b) — cheaper than full category+priority LLM
         if spam_cfg and spam_cfg.enabled:

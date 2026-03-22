@@ -161,6 +161,11 @@ def parse_message(uid: int, folder: str, raw_bytes: bytes) -> dict[str, Any]:
     received_spf = msg.get("Received-SPF", "") or ""
     auth_results = msg.get("Authentication-Results", "") or ""
     x_spam_status = msg.get("X-Spam-Status", "") or ""
+    x_spam_flag = msg.get("X-Spam-Flag", "") or ""
+    # Extract numeric score from "Yes, score=24.0 required=5.0 ..."
+    import re as _re
+    _score_match = _re.search(r"score=([\d.]+)", x_spam_status, _re.IGNORECASE)
+    x_spam_score: float | None = float(_score_match.group(1)) if _score_match else None
 
     text_body, html_body = _extract_body(msg)
     body_text = sanitize_email_body(text_body, html_body)
@@ -190,6 +195,8 @@ def parse_message(uid: int, folder: str, raw_bytes: bytes) -> dict[str, Any]:
         "received_spf": received_spf,
         "auth_results": auth_results,
         "x_spam_status": x_spam_status,
+        "x_spam_flag": x_spam_flag,
+        "x_spam_score": x_spam_score,
     }
 
 
