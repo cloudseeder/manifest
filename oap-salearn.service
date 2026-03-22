@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=spamd
+User=netgate
 ExecStart=/usr/local/bin/oap-salearn
 Restart=always
 RestartSec=5

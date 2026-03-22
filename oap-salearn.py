@@ -20,7 +20,7 @@ logging.basicConfig(
 log = logging.getLogger("oap-salearn")
 
 API_KEY_PATH = Path("/etc/oap-salearn.key")
-SA_LEARN = "/usr/bin/sa-learn"
+SA_LEARN = "/usr/local/cpanel/3rdparty/bin/sa-learn"
 
 app = FastAPI(title="oap-salearn", version="1.0.0")
 
