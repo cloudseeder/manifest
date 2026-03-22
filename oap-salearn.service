@@ -1,16 +1,16 @@
 [Unit]
-Description=OAP SpamAssassin training service
+Description=OAP SpamAssassin training service (%i)
 After=network.target
 
 [Service]
 Type=simple
-User=netgate
-ExecStart=/usr/local/bin/oap-salearn
+User=%i
+ExecStart=/usr/local/bin/oap-salearn --user %i --port 8307
 Restart=always
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=oap-salearn
+SyslogIdentifier=oap-salearn-%i
 
 [Install]
 WantedBy=multi-user.target
