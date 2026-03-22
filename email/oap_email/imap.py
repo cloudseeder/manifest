@@ -306,6 +306,32 @@ def _scan_folder_sync(
             pass
 
 
+def _fetch_raw_sync(cfg: IMAPConfig, folder: str, uid: int) -> bytes | None:
+    """Fetch raw RFC2822 bytes for a single message by UID (synchronous)."""
+    if cfg.use_ssl:
+        conn = imaplib.IMAP4_SSL(cfg.host, cfg.port)
+    else:
+        conn = imaplib.IMAP4(cfg.host, cfg.port)
+    try:
+        conn.login(cfg.username, cfg.password)
+        conn.select(folder, readonly=True)
+        status, data = conn.uid("FETCH", str(uid), "(RFC822)")
+        if status != "OK" or not data or not data[0]:
+            return None
+        raw = data[0][1] if isinstance(data[0], tuple) else None
+        return raw if isinstance(raw, bytes) else None
+    finally:
+        try:
+            conn.logout()
+        except Exception:
+            pass
+
+
+async def fetch_raw(cfg: IMAPConfig, folder: str, uid: int) -> bytes | None:
+    """Async wrapper — fetch raw RFC2822 bytes for a single message by UID."""
+    return await asyncio.to_thread(_fetch_raw_sync, cfg, folder, uid)
+
+
 async def scan_folder(
     cfg: IMAPConfig,
     folder: str = "INBOX",

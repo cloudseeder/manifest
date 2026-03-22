@@ -83,6 +83,11 @@ auto_file:
 #   use_escalation: false              # use Claude for draft generation (better quality)
 #   ollama_model: "qwen3:8b"          # local model for draft generation
 
+# SpamAssassin training — feeds classified messages to sa-learn via HTTP
+# salearn:
+#   url: "https://mail.example.com/salearn/train"
+#   api_key: "your-secret-key"   # or OAP_SALEARN_API_KEY env var
+
 # SMTP — required for sending approved draft replies (manager.draft_reply_enabled)
 # smtp:
 #   host: "smtp.gmail.com"

@@ -6,10 +6,10 @@
     "format": "application/json",
     "description": "Use action='ask' for questions, 'reply' to reply to a message, 'send' to compose a new email, 'manage' for autonomous inbox management.",
     "parameters": {
-      "action": {"type": "string", "description": "ask, reply, send, manage, mailing_lists, preferences_add, preferences_list, preferences_remove, manager_log, relationships_list, drafts_list, drafts_approve, drafts_reject, drafts_send", "required": true},
+      "action": {"type": "string", "description": "ask, reply, send, train, manage, mailing_lists, preferences_add, preferences_list, preferences_remove, manager_log, relationships_list, drafts_list, drafts_approve, drafts_reject, drafts_send", "required": true},
       "question": {"type": "string", "description": "For ask — natural language question about email.", "required": false},
       "id": {"type": "string", "description": "For reply — the message ID to reply to (from a previous ask/list result).", "required": false},
-      "body": {"type": "string", "description": "For reply or send — the message body text.", "required": false},
+      "body": {"type": "string", "description": "For reply or send — the message body text. For train — 'spam' or 'ham'.", "required": false},
       "to": {"type": "string", "description": "For send — recipient email address.", "required": false},
       "subject": {"type": "string", "description": "For send — email subject line.", "required": false},
       "pattern": {"type": "string", "description": "For preferences_add/remove — email address, @domain, or 'category:offers'", "required": false},

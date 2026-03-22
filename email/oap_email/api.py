@@ -8,6 +8,7 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
+import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
 
@@ -569,6 +570,35 @@ async def dispatch(req: DispatchRequest):
         _db.update_draft_status(draft["id"], "sent")
         _db.log_action(msg_id, "reply_sent", f"Replied to {to_addr['email']}")
         return {"status": "sent", "to": to_addr["email"], "subject": subject}
+
+    elif action == "train":
+        if not _cfg or not _cfg.salearn.url:
+            raise HTTPException(status_code=503, detail="SA-learn not configured (salearn.url missing)")
+        msg_id = req.id
+        label = req.body  # reuse body field for label: "spam" or "ham"
+        if not msg_id or label not in ("spam", "ham"):
+            raise HTTPException(status_code=400, detail="'id' and 'body' (spam or ham) required")
+        msg = _db.get_message(msg_id)
+        if not msg:
+            raise HTTPException(status_code=404, detail=f"Message {msg_id} not found")
+        from .imap import fetch_raw
+        raw = await fetch_raw(_cfg.imap, msg.get("folder", "INBOX"), msg["uid"])
+        if not raw:
+            raise HTTPException(status_code=502, detail="Could not fetch raw message from IMAP")
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                _cfg.salearn.url,
+                content=raw,
+                params={"label": label},
+                headers={
+                    "Content-Type": "message/rfc822",
+                    "X-Api-Key": _cfg.salearn.api_key,
+                },
+            )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"sa-learn returned {resp.status_code}: {resp.text}")
+        _db.log_action(msg_id, f"salearn_{label}", f"Trained as {label}")
+        return resp.json()
 
     elif action == "send":
         if not _cfg or not _cfg.smtp.host:

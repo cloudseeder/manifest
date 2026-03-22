@@ -125,6 +125,12 @@ class SpamFilterConfig:
 
 
 @dataclass
+class SALearnConfig:
+    url: str = ""        # https://mail.netgate.net/salearn/train
+    api_key: str = ""    # X-Api-Key header value
+
+
+@dataclass
 class SMTPConfig:
     host: str = ""
     port: int = 587
@@ -153,6 +159,7 @@ class ManagerConfig:
 class Config:
     imap: IMAPConfig = field(default_factory=IMAPConfig)
     smtp: SMTPConfig = field(default_factory=SMTPConfig)
+    salearn: SALearnConfig = field(default_factory=SALearnConfig)
     classifier: ClassifierConfig = field(default_factory=ClassifierConfig)
     auto_file: AutoFileConfig = field(default_factory=AutoFileConfig)
     escalation: EscalationConfig = field(default_factory=EscalationConfig)
@@ -243,6 +250,11 @@ def load_config(path: str | None = None) -> Config:
         cfg.smtp.username = smtp.get("username", cfg.smtp.username)
         cfg.smtp.password = os.environ.get("OAP_SMTP_PASSWORD", smtp.get("password", ""))
         cfg.smtp.use_tls = smtp.get("use_tls", cfg.smtp.use_tls)
+
+        # SA-learn
+        sal = raw.get("salearn", {})
+        cfg.salearn.url = sal.get("url", cfg.salearn.url)
+        cfg.salearn.api_key = os.environ.get("OAP_SALEARN_API_KEY", sal.get("api_key", ""))
 
         # Spam pre-filter
         sf = raw.get("spam_filter", {})
