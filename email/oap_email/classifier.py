@@ -59,9 +59,13 @@ def _check_overrides(
     if email_lower in config_overrides:
         return config_overrides[email_lower]
     if "@" in email_lower:
-        domain = "@" + email_lower.split("@", 1)[1]
-        if domain in config_overrides:
-            return config_overrides[domain]
+        domain = email_lower.split("@", 1)[1]
+        # Walk up the domain hierarchy: vpc777.netgate.net → netgate.net → net
+        parts = domain.split(".")
+        for i in range(len(parts) - 1):
+            candidate = "@" + ".".join(parts[i:])
+            if candidate in config_overrides:
+                return config_overrides[candidate]
 
     return None
 
