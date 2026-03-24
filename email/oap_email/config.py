@@ -122,6 +122,9 @@ class SpamFilterConfig:
     spam_threshold: float = 0.85
     # Domain blocklist — instant spam with no model call (e.g. ["spam-kingdom.com"])
     blocked_domains: list[str] = field(default_factory=list)
+    # Minimum SA score to trust X-Spam-Status unconditionally (skip LLM).
+    # Set higher on a fresh/untrained SA install to avoid false positives.
+    sa_score_threshold: float = 10.0
 
 
 @dataclass
@@ -261,6 +264,7 @@ def load_config(path: str | None = None) -> Config:
         cfg.spam_filter.enabled = sf.get("enabled", cfg.spam_filter.enabled)
         cfg.spam_filter.local_model = sf.get("local_model", cfg.spam_filter.local_model)
         cfg.spam_filter.spam_threshold = sf.get("spam_threshold", cfg.spam_filter.spam_threshold)
+        cfg.spam_filter.sa_score_threshold = sf.get("sa_score_threshold", cfg.spam_filter.sa_score_threshold)
         if "blocked_domains" in sf:
             cfg.spam_filter.blocked_domains = [d.lower() for d in sf["blocked_domains"]]
 

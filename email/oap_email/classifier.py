@@ -241,7 +241,7 @@ async def classify_message_escalated(
         return None
 
 
-def _spam_heuristics(row: dict, blocked_domains: set[str]) -> tuple[bool, str]:
+def _spam_heuristics(row: dict, blocked_domains: set[str], sa_score_threshold: float = 10.0) -> tuple[bool, str]:
     """Check definitive header/domain spam signals — no LLM needed.
 
     Returns (is_spam, log_tag). Only fires on high-confidence signals to
@@ -255,10 +255,13 @@ def _spam_heuristics(row: dict, blocked_domains: set[str]) -> tuple[bool, str]:
         if domain in blocked_domains:
             return True, f"[blocklist] {domain}"
 
-    # Upstream spam filter already decided (X-Spam-Status: Yes ...)
+    # Upstream spam filter already decided — only trust SA above the score
+    # threshold to avoid false positives on a fresh/untrained Bayes DB.
     x_spam = (row.get("x_spam_status") or "").lower()
     if x_spam.startswith("yes"):
-        return True, "[x-spam-header]"
+        score = row.get("x_spam_score") or 0.0
+        if score >= sa_score_threshold:
+            return True, f"[x-spam-header score={score:.1f}]"
 
     return False, ""
 
@@ -366,8 +369,10 @@ async def classify_uncategorized(
         # Tier: header heuristics (blocked domain, upstream spam header).
         # SA X-Spam-Flag check always runs — SA is in the Exim delivery path
         # unconditionally. blocked_domains check requires spam_cfg.enabled.
+        sa_thresh = spam_cfg.sa_score_threshold if spam_cfg else 10.0
         is_spam, heuristic_tag = _spam_heuristics(
-            row, blocked_domains if (spam_cfg and spam_cfg.enabled) else set()
+            row, blocked_domains if (spam_cfg and spam_cfg.enabled) else set(),
+            sa_score_threshold=sa_thresh,
         )
         if is_spam:
             db.set_classification(row["id"], "spam", "noise")
