@@ -1028,6 +1028,32 @@ class AgentDB:
 
     # --- Notifications ---
 
+    def replace_pending_notification(self, task_id: str, type: str, title: str, body: str,
+                                        source: str | None = None, run_id: str | None = None,
+                                        priority: int = 0) -> dict:
+        """Replace existing undismissed notification for this task, or create new.
+
+        Prevents accumulation of overlapping notifications when a task runs
+        multiple times before the user sees the briefing.
+        """
+        now = _now()
+        with self._lock:
+            existing = self.conn.execute(
+                "SELECT id FROM notifications WHERE task_id = ? AND dismissed = 0 LIMIT 1",
+                (task_id,),
+            ).fetchone()
+            if existing:
+                self.conn.execute(
+                    "UPDATE notifications SET title=?, body=?, run_id=?, created_at=? WHERE id=?",
+                    (title, body, run_id, now, existing["id"]),
+                )
+                self.conn.commit()
+                return {"id": existing["id"], "type": type, "title": title, "body": body,
+                        "source": source, "task_id": task_id, "run_id": run_id,
+                        "priority": priority, "dismissed": False, "created_at": now}
+        return self.add_notification(type=type, title=title, body=body, source=source,
+                                     task_id=task_id, run_id=run_id, priority=priority)
+
     def add_notification(
         self,
         type: str,
