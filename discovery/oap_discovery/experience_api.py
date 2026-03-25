@@ -73,6 +73,22 @@ async def delete_record(experience_id: str) -> dict:
     return {"deleted": experience_id}
 
 
+@router.delete("/records")
+async def delete_records_by_manifest(
+    manifest: str = Query(..., description="Manifest domain to purge (e.g. local/spotify-create-playlist)"),
+) -> dict:
+    """Delete all experience records for a given manifest domain.
+
+    Use this to clear a poisoned cache entry so the next request goes through
+    full discovery rather than replaying a bad cached invocation.
+    """
+    _, store = _require_enabled()
+    deleted, ids = store.delete_by_manifest(manifest)
+    if _experience_vectors is not None and ids:
+        _experience_vectors.delete_many(ids)
+    return {"deleted": deleted, "manifest": manifest}
+
+
 @router.delete("/failures")
 async def clear_failures(
     fingerprint: str = Query(...),

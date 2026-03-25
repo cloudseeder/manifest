@@ -287,6 +287,25 @@ class ExperienceStore:
         self._db.commit()
         return cursor.rowcount > 0
 
+    def delete_by_manifest(self, manifest_domain: str) -> tuple[int, list[str]]:
+        """Delete all experience records for a given manifest domain.
+
+        Returns (deleted_count, list_of_deleted_ids) so callers can cascade
+        to the vector store.
+        """
+        rows = self._db.execute(
+            "SELECT id FROM experiences WHERE manifest_matched = ?",
+            (manifest_domain,),
+        ).fetchall()
+        ids = [r["id"] for r in rows]
+        if ids:
+            self._db.execute(
+                f"DELETE FROM experiences WHERE manifest_matched = ?",
+                (manifest_domain,),
+            )
+            self._db.commit()
+        return len(ids), ids
+
     def count(self) -> int:
         """Total number of experience records."""
         row = self._db.execute("SELECT COUNT(*) FROM experiences").fetchone()
