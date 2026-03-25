@@ -107,3 +107,23 @@ class SpotifyClient:
     def add_tracks(self, playlist_id: str, track_uris: list[str]) -> dict:
         sp = self._client()
         return sp.playlist_add_items(playlist_id, track_uris)
+
+    def replace_tracks(self, playlist_id: str, track_uris: list[str]) -> dict:
+        """Replace all tracks in an existing playlist."""
+        sp = self._client()
+        return sp.playlist_replace_items(playlist_id, track_uris)
+
+    def find_playlist_by_name(self, name: str) -> dict | None:
+        """Return the first owned playlist matching name exactly, or None."""
+        sp = self._client()
+        user_id = sp.current_user()["id"]
+        offset = 0
+        while True:
+            page = sp.current_user_playlists(limit=50, offset=offset)
+            for pl in page.get("items", []):
+                if pl.get("name") == name and pl.get("owner", {}).get("id") == user_id:
+                    return pl
+            if page.get("next"):
+                offset += 50
+            else:
+                return None

@@ -321,6 +321,49 @@ async def add_tracks(body: dict):
         raise HTTPException(status_code=502, detail=str(e))
 
 
+@app.post("/proxy/playlists/upsert")
+async def upsert_playlist(body: dict):
+    """Create-or-replace a Spotify playlist by name.
+
+    Finds the first owned playlist with the given name and replaces its tracks.
+    If no matching playlist exists, creates a new one and adds the tracks.
+    Use this for recurring tasks (daily mix, etc.) to avoid creating duplicate playlists.
+
+    Body: name (required), track_uris (required), description (optional), public (optional).
+    Returns: {playlist_id, playlist_name, created, track_count}
+    """
+    c = _require_client()
+    name = (body.get("name") or "").strip()
+    track_uris = body.get("track_uris") or []
+    if not name:
+        raise HTTPException(status_code=400, detail="'name' is required")
+    if not track_uris:
+        raise HTTPException(status_code=400, detail="'track_uris' is required")
+    if isinstance(track_uris, str):
+        track_uris = [u.strip() for u in track_uris.split(",") if u.strip()]
+    description = body.get("description", "")
+    public = bool(body.get("public", False))
+    try:
+        existing = c.find_playlist_by_name(name)
+        if existing:
+            playlist_id = existing["id"]
+            c.replace_tracks(playlist_id, track_uris)
+            log.info("Upsert: replaced %d tracks in existing playlist '%s' (%s)", len(track_uris), name, playlist_id)
+            created = False
+        else:
+            pl = c.create_playlist(name, description=description, public=public)
+            playlist_id = pl["id"]
+            c.add_tracks(playlist_id, track_uris)
+            log.info("Upsert: created new playlist '%s' (%s) with %d tracks", name, playlist_id, len(track_uris))
+            created = True
+        return {"playlist_id": playlist_id, "playlist_name": name, "created": created, "track_count": len(track_uris)}
+    except RuntimeError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        log.error("upsert_playlist error: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 # Path-param variants (for direct curl access — wildcard must come after static routes above)
 
 @app.get("/proxy/artists/{artist_id}")
