@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import chromadb
@@ -48,7 +48,10 @@ CREATE TABLE IF NOT EXISTS experiences (
     outcome_latency_ms  INTEGER,
 
     -- Corrections (JSON array)
-    corrections_json    TEXT NOT NULL DEFAULT '[]'
+    corrections_json    TEXT NOT NULL DEFAULT '[]',
+
+    -- TTL: NULL = no expiry (legacy rows); updated on every touch()
+    expires_at          TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_exp_fingerprint ON experiences(intent_fingerprint);
@@ -57,36 +60,69 @@ CREATE INDEX IF NOT EXISTS idx_exp_manifest ON experiences(manifest_matched);
 CREATE INDEX IF NOT EXISTS idx_exp_use_count ON experiences(use_count DESC);
 CREATE INDEX IF NOT EXISTS idx_exp_last_used ON experiences(last_used DESC);
 CREATE INDEX IF NOT EXISTS idx_exp_confidence ON experiences(confidence DESC);
+CREATE INDEX IF NOT EXISTS idx_exp_expires_at ON experiences(expires_at);
 """
+
+_MIGRATION = """\
+ALTER TABLE experiences ADD COLUMN expires_at TEXT;
+"""
+
+
+_NOT_EXPIRED = "(expires_at IS NULL OR expires_at > datetime('now'))"
 
 
 class ExperienceStore:
     """SQLite persistence for procedural memory experience records."""
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str, ttl_days: int = 30) -> None:
         self._db = sqlite3.connect(db_path)
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.executescript(SCHEMA)
+        self._ttl_days = ttl_days
+        # Migrate older databases that lack the expires_at column
+        try:
+            self._db.execute(_MIGRATION)
+            self._db.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
     def close(self) -> None:
         self._db.close()
 
     def save(self, record: ExperienceRecord) -> None:
-        """Insert or replace an experience record."""
+        """Insert or update an experience record.
+
+        On conflict (same id), increments use_count rather than resetting it
+        so repeated full-discovery confirmations of the same tool reinforce the
+        entry toward the min_confirmed_uses threshold.
+        """
         invocation_json = json.dumps(record.invocation.model_dump())
         corrections_json = json.dumps(
             [c.model_dump() for c in record.corrections]
         )
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(days=self._ttl_days)
+        ).isoformat()
         self._db.execute(
-            """INSERT OR REPLACE INTO experiences (
+            """INSERT INTO experiences (
                 id, timestamp, use_count, last_used,
                 intent_raw, intent_fingerprint, intent_domain,
                 discovery_query, manifest_matched, manifest_version, confidence,
                 invocation_json,
                 outcome_status, outcome_http_code, outcome_summary, outcome_latency_ms,
-                corrections_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                corrections_json, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                use_count    = use_count + 1,
+                last_used    = excluded.last_used,
+                intent_raw   = excluded.intent_raw,
+                outcome_status      = excluded.outcome_status,
+                outcome_http_code   = excluded.outcome_http_code,
+                outcome_summary     = excluded.outcome_summary,
+                outcome_latency_ms  = excluded.outcome_latency_ms,
+                corrections_json    = excluded.corrections_json,
+                expires_at   = excluded.expires_at""",
             (
                 record.id,
                 record.timestamp.isoformat(),
@@ -105,6 +141,7 @@ class ExperienceStore:
                 record.outcome.response_summary,
                 record.outcome.latency_ms,
                 corrections_json,
+                expires_at,
             ),
         )
         self._db.commit()
@@ -121,10 +158,10 @@ class ExperienceStore:
     def find_by_fingerprint(
         self, fingerprint: str, limit: int = 5
     ) -> list[ExperienceRecord]:
-        """Find records with an exact fingerprint match."""
+        """Find non-expired records with an exact fingerprint match."""
         rows = self._db.execute(
-            """SELECT * FROM experiences
-               WHERE intent_fingerprint = ?
+            f"""SELECT * FROM experiences
+               WHERE intent_fingerprint = ? AND {_NOT_EXPIRED}
                ORDER BY use_count DESC, last_used DESC
                LIMIT ?""",
             (fingerprint, limit),
@@ -176,10 +213,10 @@ class ExperienceStore:
         fingerprint_prefix: str,
         limit: int = 5,
     ) -> list[ExperienceRecord]:
-        """Find records with same domain and fingerprint prefix match."""
+        """Find non-expired records with same domain and fingerprint prefix match."""
         rows = self._db.execute(
-            """SELECT * FROM experiences
-               WHERE intent_domain = ? AND intent_fingerprint LIKE ?
+            f"""SELECT * FROM experiences
+               WHERE intent_domain = ? AND intent_fingerprint LIKE ? AND {_NOT_EXPIRED}
                ORDER BY use_count DESC, last_used DESC
                LIMIT ?""",
             (intent_domain, f"{fingerprint_prefix}%", limit),
@@ -187,13 +224,16 @@ class ExperienceStore:
         return [self._row_to_record(r) for r in rows]
 
     def touch(self, experience_id: str) -> None:
-        """Increment use_count and update last_used."""
-        now = datetime.now(timezone.utc).isoformat()
+        """Increment use_count, update last_used, and extend TTL."""
+        now = datetime.now(timezone.utc)
+        expires_at = (now + timedelta(days=self._ttl_days)).isoformat()
         self._db.execute(
             """UPDATE experiences
-               SET use_count = use_count + 1, last_used = ?
+               SET use_count = use_count + 1,
+                   last_used = ?,
+                   expires_at = ?
                WHERE id = ?""",
-            (now, experience_id),
+            (now.isoformat(), expires_at, experience_id),
         )
         self._db.commit()
 
@@ -279,6 +319,20 @@ class ExperienceStore:
             )
         self._db.commit()
         return cursor.rowcount
+
+    def delete_expired(self) -> list[str]:
+        """Delete all expired entries. Returns list of deleted IDs for vector cleanup."""
+        rows = self._db.execute(
+            "SELECT id FROM experiences WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')"
+        ).fetchall()
+        ids = [r["id"] for r in rows]
+        if ids:
+            self._db.execute(
+                f"DELETE FROM experiences WHERE id IN ({','.join('?' * len(ids))})",
+                ids,
+            )
+            self._db.commit()
+        return ids
 
     def prune(self, max_records: int) -> int:
         """Delete excess records, keeping the most-recently-used with highest use counts.

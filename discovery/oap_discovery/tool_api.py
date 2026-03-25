@@ -257,7 +257,12 @@ async def _check_experience_cache(
                 if exp is None:
                     continue  # stale vector entry
 
-                if exp.discovery.confidence >= conf_threshold and exp.outcome.status == "success":
+                min_uses = _experience_cfg.min_confirmed_uses if _experience_cfg else 1
+                if (
+                    exp.discovery.confidence >= conf_threshold
+                    and exp.outcome.status == "success"
+                    and exp.use_count >= min_uses
+                ):
                     if exp.discovery.manifest_matched == "builtin/exec":
                         entry = EXEC_REGISTRY_ENTRY
                     else:
@@ -292,9 +297,14 @@ async def _check_experience_cache(
         return [], {}, None, None, None
 
     # Try exact fingerprint match (fast SQLite lookup)
+    min_uses = _experience_cfg.min_confirmed_uses if _experience_cfg else 1
     matches = _experience_store.find_by_fingerprint(fingerprint)
     for exp in matches:
-        if exp.discovery.confidence >= conf_threshold and exp.outcome.status == "success":
+        if (
+            exp.discovery.confidence >= conf_threshold
+            and exp.outcome.status == "success"
+            and exp.use_count >= min_uses
+        ):
             if exp.discovery.manifest_matched == "builtin/exec":
                 entry = EXEC_REGISTRY_ENTRY
             else:

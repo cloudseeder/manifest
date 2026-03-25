@@ -206,16 +206,21 @@ async def lifespan(app: FastAPI):
 
     # Procedural memory (experimental)
     if _cfg.experience.enabled:
-        _experience_store = ExperienceStore(_cfg.experience.db_path)
+        _experience_store = ExperienceStore(_cfg.experience.db_path, ttl_days=_cfg.experience.ttl_days)
         exp_engine = ExperienceEngine(_engine, _ollama, _experience_store, _cfg.experience)
         experience_api._experience_engine = exp_engine
         experience_api._experience_store = _experience_store
         exp_count = _experience_store.count()
-        log.info("Procedural memory enabled — %d experience records", exp_count)
-
         # Vector similarity store (ChromaDB) for experience cache lookup
         chromadb_path = str(Path(_cfg.chromadb.path) / "experience_vectors")
         _experience_vectors = ExperienceVectorStore(chromadb_path)
+
+        expired_ids = _experience_store.delete_expired()
+        if expired_ids:
+            _experience_vectors.delete_many(expired_ids)
+            log.info("Pruned %d expired experience record(s)", len(expired_ids))
+        exp_count = _experience_store.count()
+        log.info("Procedural memory enabled — %d experience records", exp_count)
         experience_api._experience_vectors = _experience_vectors
         vec_count = _experience_vectors.count()
         log.info("Experience vector store — %d embeddings", vec_count)

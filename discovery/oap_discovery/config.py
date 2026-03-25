@@ -52,6 +52,8 @@ class ExperienceConfig:
     stdio_timeout: int = 10
     blacklist_threshold: int = 5
     vector_similarity_threshold: float = 0.25  # cosine distance: 0=identical, lower=more similar
+    ttl_days: int = 30          # positive entries expire after this many days without a hit
+    min_confirmed_uses: int = 2  # uses required before an entry is served from cache
 
 
 @dataclass
