@@ -321,13 +321,16 @@ async def add_tracks(body: dict):
         raise HTTPException(status_code=502, detail=str(e))
 
 
+_OAP_MARKER = "managed-by-oap"
+
+
 @app.post("/proxy/playlists/upsert")
 async def upsert_playlist(body: dict):
-    """Create-or-replace a Spotify playlist by name.
+    """Create-or-replace an OAP-managed Spotify playlist by name.
 
-    Finds the first owned playlist with the given name and replaces its tracks.
-    If no matching playlist exists, creates a new one and adds the tracks.
-    Use this for recurring tasks (daily mix, etc.) to avoid creating duplicate playlists.
+    Only updates playlists that were previously created by this endpoint
+    (identified by a hidden marker in the description). Never touches
+    manually-created or third-party playlists with the same name.
 
     Body: name (required), track_uris (required), description (optional), public (optional).
     Returns: {playlist_id, playlist_name, created, track_count}
@@ -341,20 +344,22 @@ async def upsert_playlist(body: dict):
         raise HTTPException(status_code=400, detail="'track_uris' is required")
     if isinstance(track_uris, str):
         track_uris = [u.strip() for u in track_uris.split(",") if u.strip()]
-    description = body.get("description", "")
+    user_description = body.get("description", "")
+    # Embed marker so we can safely identify OAP-managed playlists on future runs
+    full_description = f"{user_description} [{_OAP_MARKER}]".strip()
     public = bool(body.get("public", False))
     try:
-        existing = c.find_playlist_by_name(name)
+        existing = c.find_playlist_by_name(name, marker=_OAP_MARKER)
         if existing:
             playlist_id = existing["id"]
             c.replace_tracks(playlist_id, track_uris)
-            log.info("Upsert: replaced %d tracks in existing playlist '%s' (%s)", len(track_uris), name, playlist_id)
+            log.info("Upsert: replaced %d tracks in OAP playlist '%s' (%s)", len(track_uris), name, playlist_id)
             created = False
         else:
-            pl = c.create_playlist(name, description=description, public=public)
+            pl = c.create_playlist(name, description=full_description, public=public)
             playlist_id = pl["id"]
             c.add_tracks(playlist_id, track_uris)
-            log.info("Upsert: created new playlist '%s' (%s) with %d tracks", name, playlist_id, len(track_uris))
+            log.info("Upsert: created OAP playlist '%s' (%s) with %d tracks", name, playlist_id, len(track_uris))
             created = True
         return {"playlist_id": playlist_id, "playlist_name": name, "created": created, "track_count": len(track_uris)}
     except RuntimeError as e:

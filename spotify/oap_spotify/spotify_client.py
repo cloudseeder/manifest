@@ -113,16 +113,25 @@ class SpotifyClient:
         sp = self._client()
         return sp.playlist_replace_items(playlist_id, track_uris)
 
-    def find_playlist_by_name(self, name: str) -> dict | None:
-        """Return the first owned playlist matching name exactly, or None."""
+    def find_playlist_by_name(self, name: str, marker: str | None = None) -> dict | None:
+        """Return the first owned playlist matching name exactly, or None.
+
+        If marker is given, only match playlists whose description contains it —
+        prevents accidentally overwriting manually-created playlists.
+        """
         sp = self._client()
         user_id = sp.current_user()["id"]
         offset = 0
         while True:
             page = sp.current_user_playlists(limit=50, offset=offset)
             for pl in page.get("items", []):
-                if pl.get("name") == name and pl.get("owner", {}).get("id") == user_id:
-                    return pl
+                if pl.get("name") != name:
+                    continue
+                if pl.get("owner", {}).get("id") != user_id:
+                    continue
+                if marker and marker not in (pl.get("description") or ""):
+                    continue
+                return pl
             if page.get("next"):
                 offset += 50
             else:
