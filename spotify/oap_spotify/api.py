@@ -174,7 +174,7 @@ async def recently_played(
 async def search(
     q: str = Query(..., description="Search query"),
     type: str = Query("track,artist", description="Comma-separated types: track, artist, album, playlist"),
-    limit: int = Query(10, ge=1, le=50),
+    limit: int = Query(5, ge=0, le=10),
     market: str = Query("US"),
 ):
     """Search Spotify catalog for tracks, artists, albums, or playlists."""
