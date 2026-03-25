@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio as _asyncio
 import json
 import logging
+import re as _re
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -82,10 +83,17 @@ MAX_INJECTED_TOOLS = 3
 
 # Detect file paths in user messages — when present, only offer oap_exec
 # (small LLMs ignore system prompt instructions and pick the "named" tool)
-import re as _re
 import shlex as _shlex
 _FILE_PATH_RE = _re.compile(
     r'(?:^|[\s\'"])([~/.][\w./~-]*\.\w+|/[\w./~-]+)'
+)
+
+# Strip scheduler-injected [IMPORTANT: ...]\n prefix before discovery so
+# FTS/vector search sees the actual task, not the since-filter boilerplate.
+_INJECTED_PREFIX_RE = _re.compile(r"^\[IMPORTANT:.*?\]\n+", _re.DOTALL)
+_FOLLOWUP_RE = _re.compile(
+    r'^(please\s+)?(correct|fix|update|change|delete|remove|yes|ok|sure|confirm|do\s+(it|that|this|so))\b',
+    _re.I,
 )
 
 
@@ -552,7 +560,6 @@ async def _try_force_invoke(
     Returns True if the tool call succeeded and response was built.
     """
     import json as _json
-    import re as _re
 
     log.warning(
         "Force-invoking %s via LLM argument extraction", tool_name,
@@ -826,13 +833,13 @@ async def chat_proxy(req: ChatRequest) -> Any:
             else:
                 _prev_user_msg = msg.content
                 break
-    _FOLLOWUP_RE = _re.compile(
-        r'^(please\s+)?(correct|fix|update|change|delete|remove|yes|ok|sure|confirm|do\s+(it|that|this|so))\b',
-        _re.I,
-    )
     if last_user_msg and _prev_user_msg and len(last_user_msg) < 60 and _FOLLOWUP_RE.search(last_user_msg):
         last_user_msg = f"{_prev_user_msg}\n\nFollow-up: {last_user_msg}"
         log.info("Expanded follow-up message with prior context: %r", last_user_msg[:120])
+
+    # Strip scheduler-injected [IMPORTANT: ...]\n prefix before discovery so
+    # FTS/vector search sees the actual task, not the since-filter boilerplate.
+    discovery_task = _INJECTED_PREFIX_RE.sub("", last_user_msg).strip() or last_user_msg
 
     # Always fingerprint when experience engine is available (needed for failure hints
     # even with --no-cache)
@@ -887,7 +894,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 ]
         if not exp_cache_hit:
             tools, registry, blacklisted_tools = await _discover_tools(
-                engine, store, last_user_msg, req.oap_top_k,
+                engine, store, discovery_task, req.oap_top_k,
                 fingerprint=exp_fingerprint,
             )
             # Inject tools from similar experiences (partial fingerprint match)
@@ -1514,7 +1521,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
             debug_rounds = []
             messages = [messages[0], *original_messages]  # preserve system prompt
             tools, registry, blacklisted_tools = await _discover_tools(
-                engine, store, last_user_msg, req.oap_top_k,
+                engine, store, discovery_task, req.oap_top_k,
                 fingerprint=exp_fingerprint,
                 extra_blacklist=session_blacklist,
             )
@@ -1607,7 +1614,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
             debug_rounds = []
             messages = [messages[0], *original_messages]  # preserve system prompt
             tools, registry, blacklisted_tools = await _discover_tools(
-                engine, store, last_user_msg, req.oap_top_k,
+                engine, store, discovery_task, req.oap_top_k,
                 fingerprint=exp_fingerprint,
                 extra_blacklist=session_blacklist,
             )
@@ -1677,7 +1684,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
             debug_rounds = []
             messages = [messages[0], *original_messages]
             tools, registry, blacklisted_tools = await _discover_tools(
-                engine, store, last_user_msg, req.oap_top_k,
+                engine, store, discovery_task, req.oap_top_k,
                 fingerprint=exp_fingerprint,
                 extra_blacklist=session_blacklist,
             )
