@@ -1,7 +1,7 @@
 {
   "oap": "1.0",
   "name": "spotify-upsert-playlist",
-  "description": "Create or update a recurring Spotify playlist by name. Replaces the tracks in an existing playlist with the same name instead of creating a duplicate. Use for daily/weekly mixes or any playlist that should be refreshed each run. For one-off new playlists, use spotify-create-playlist instead.",
+  "description": "Update a recurring OAP-managed Spotify playlist in place — replaces its tracks without creating a duplicate. ONLY use this for scheduled/automated tasks that run repeatedly (daily mix, weekly picks). NEVER use for one-off user requests like 'create a playlist of X' — use spotify-create-playlist for those.",
   "input": {
     "format": "application/json",
     "description": "name is the playlist title (required). track_uris is a list of spotify:track:ID URIs (required). description and public are optional.",
