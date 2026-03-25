@@ -78,14 +78,14 @@ class ExperienceStore:
         self._db = sqlite3.connect(db_path)
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
-        self._db.executescript(SCHEMA)
-        self._ttl_days = ttl_days
-        # Migrate older databases that lack the expires_at column
+        # Migration must run before SCHEMA so expires_at exists when the index is created
         try:
             self._db.execute(_MIGRATION)
             self._db.commit()
         except sqlite3.OperationalError:
-            pass  # column already exists
+            pass  # column already exists (or table doesn't exist yet — SCHEMA handles that)
+        self._db.executescript(SCHEMA)
+        self._ttl_days = ttl_days
 
     def close(self) -> None:
         self._db.close()
