@@ -288,7 +288,9 @@ async def create_playlist(body: dict):
     description = body.get("description", "")
     public = bool(body.get("public", False))
     try:
-        return c.create_playlist(name, description=description, public=public)
+        result = c.create_playlist(name, description=description, public=public)
+        log.info("Created playlist '%s' (%s)", name, result.get("id", "?"))
+        return result
     except RuntimeError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
@@ -313,7 +315,9 @@ async def add_tracks(body: dict):
     if isinstance(track_uris, str):
         track_uris = [u.strip() for u in track_uris.split(",") if u.strip()]
     try:
-        return c.add_tracks(playlist_id, track_uris)
+        result = c.add_tracks(playlist_id, track_uris)
+        log.info("Added %d track(s) to playlist %s", len(track_uris), playlist_id)
+        return result
     except RuntimeError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
