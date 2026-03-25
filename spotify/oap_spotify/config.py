@@ -25,7 +25,7 @@ class SpotifyConfig:
         "playlist-modify-public",
     ])
     # Where spotipy caches the OAuth token
-    token_cache_path: str = ".spotify_token_cache"
+    token_cache_path: str = "~/.oap_spotify_token_cache"
 
 
 @dataclass

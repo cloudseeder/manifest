@@ -15,7 +15,7 @@ export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
   const [models, setModels] = useState<string[]>([])
   const [model, setModel] = useState(task?.model || '')
   const [incremental, setIncremental] = useState(task?.incremental ?? true)
-  const [autoRefine, setAutoRefine] = useState(true)
+  const [autoRefine, setAutoRefine] = useState(false)
 
   // Refinement state
   const [refining, setRefining] = useState(false)
