@@ -8,6 +8,7 @@
     "parameters": {
       "action": {"type": "string", "description": "ask, reply, send, train, manage, mailing_lists, preferences_add, preferences_list, preferences_remove, manager_log, relationships_list, drafts_list, drafts_approve, drafts_reject, drafts_send", "required": true},
       "question": {"type": "string", "description": "For ask — natural language question about email.", "required": false},
+      "since": {"type": "string", "description": "For ask — ISO 8601 timestamp; only return emails received after this time. Use when checking for new emails since a known cutoff.", "required": false},
       "id": {"type": "string", "description": "For reply — the message ID to reply to (from a previous ask/list result).", "required": false},
       "body": {"type": "string", "description": "For reply or send — the message body text. For train — 'spam' or 'ham'.", "required": false},
       "to": {"type": "string", "description": "For send — recipient email address.", "required": false},

@@ -251,12 +251,12 @@ class TaskScheduler:
                 content = result.get("content", "")
                 has_news = content.strip() and not self._is_empty_result(content) and not is_dup
                 if has_news:
-                    self._db.replace_pending_notification(
-                        task_id=task_id,
+                    self._db.add_notification(
                         type="task_result",
                         title=task["name"],
                         body=content.strip(),
                         source="scheduler",
+                        task_id=task_id,
                         run_id=run_id,
                     )
                 else:

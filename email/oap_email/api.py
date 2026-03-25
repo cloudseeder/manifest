@@ -329,7 +329,7 @@ async def dispatch(req: DispatchRequest):
 
         # Scan for new messages, then return recent emails — let Claude interpret the question
         scan_result = await scan()
-        since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        since = req.since or (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
         list_result = await list_messages(
             folder=None,
             since=since,
