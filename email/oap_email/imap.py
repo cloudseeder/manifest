@@ -405,8 +405,10 @@ def _move_messages_sync(
                 # Create target folder if needed (once per folder)
                 if full_target not in created_folders:
                     cs, cd = conn.create(full_target)
-                    log.info("IMAP CREATE %s: %s %s", full_target, cs, cd)
-                    conn.subscribe(full_target)
+                    if cs == "OK":
+                        log.info("IMAP folder created: %s", full_target)
+                        conn.subscribe(full_target)
+                    # else: NO [ALREADYEXISTS] is expected and fine — skip subscribe/log
                     created_folders.add(full_target)
 
                 uid_str = str(uid)
