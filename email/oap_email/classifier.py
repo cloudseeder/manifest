@@ -223,6 +223,14 @@ async def classify_message_escalated(
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"]
 
+        # Log token usage for cost visibility
+        usage = data.get("usage", {})
+        inp = usage.get("input_tokens", 0)
+        out = usage.get("output_tokens", 0)
+        if inp or out:
+            cost = (inp / 1_000_000) * 1.00 + (out / 1_000_000) * 5.00  # Haiku 4.5 rates
+            log.debug("escalated classify %s: %d in + %d out tokens (~$%.5f)", escalation.model, inp, out, cost)
+
         # Strip markdown code fences — Haiku wraps JSON in ```json ... ``` blocks
         start, end = content.find("{"), content.rfind("}")
         if start != -1 and end != -1:
