@@ -794,7 +794,13 @@ class EmailDB:
         row = self.conn.execute(
             "SELECT * FROM email_drafts WHERE id = ?", (draft_id,)
         ).fetchone()
-        return dict(row)
+        d = dict(row)
+        if d.get("to_addr"):
+            try:
+                d["to_addr"] = json.loads(d["to_addr"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return d
 
     def list_drafts(self, status: str = "pending") -> list[dict]:
         rows = self.conn.execute(
