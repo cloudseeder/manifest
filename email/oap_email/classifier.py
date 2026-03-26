@@ -50,17 +50,36 @@ def _check_overrides(
 ) -> dict[str, str | None] | None:
     """Check DB override first, then config overrides.
 
+    Config override key formats:
+      "user@example.com"   — exact email match
+      "@example.com"       — domain suffix match (walks hierarchy)
+      "~regex"             — regex match against full email address
+
     Returns {"category": ..., "priority": ...} or None.
     """
+    import re
+
     if db_override:
         return db_override
 
     email_lower = from_email.lower()
+
+    # 1. Exact email match
     if email_lower in config_overrides:
         return config_overrides[email_lower]
+
+    # 2. Regex patterns (keys starting with ~)
+    for key, val in config_overrides.items():
+        if key.startswith("~"):
+            try:
+                if re.search(key[1:], email_lower, re.IGNORECASE):
+                    return val
+            except re.error:
+                pass
+
+    # 3. Domain hierarchy walk: user@vpc777.netgate.net → @vpc777.netgate.net → @netgate.net
     if "@" in email_lower:
         domain = email_lower.split("@", 1)[1]
-        # Walk up the domain hierarchy: vpc777.netgate.net → netgate.net → net
         parts = domain.split(".")
         for i in range(len(parts) - 1):
             candidate = "@" + ".".join(parts[i:])
