@@ -244,6 +244,10 @@ async def classify_message_escalated(
             priority = "informational"
         return {"category": category, "priority": priority}
 
+    except httpx.HTTPStatusError as exc:
+        body = exc.response.text[:500] if exc.response is not None else ""
+        log.warning("Escalated classification failed: %s — %s", exc, body)
+        return None
     except Exception as exc:
         log.warning("Escalated classification failed: %s", exc)
         return None
