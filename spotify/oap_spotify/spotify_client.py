@@ -87,16 +87,6 @@ class SpotifyClient:
         sp = self._client()
         return sp.artist_related_artists(artist_id)
 
-    def artists_batch(self, artist_ids: list[str]) -> list[dict]:
-        """Fetch multiple artists in batches of 50 (Spotify API max)."""
-        sp = self._client()
-        results = []
-        for i in range(0, len(artist_ids), 50):
-            batch = artist_ids[i:i + 50]
-            data = sp.artists(batch)
-            results.extend(data.get("artists") or [])
-        return results
-
     def top_tracks_filtered(
         self,
         genres: list[str],
@@ -105,6 +95,11 @@ class SpotifyClient:
     ) -> dict:
         """Fetch up to pages*50 top tracks, filter by artist genre keywords.
 
+        Builds the genre map from top_artists (which includes genre data and
+        is not restricted) rather than the batch /v1/artists endpoint (403
+        for new Spotify apps). Falls back to individual artist lookups for
+        any artists not found in top artists.
+
         Returns {tracks: [...], total_fetched, total_matched, genres_used}.
         Genre matching is case-insensitive substring match against Spotify
         artist genre tags (e.g. 'texas country', 'americana', 'folk').
@@ -112,7 +107,18 @@ class SpotifyClient:
         sp = self._client()
         genres_lower = [g.lower() for g in genres]
 
-        # Fetch all pages
+        # Build genre map from top artists (includes genres, not restricted)
+        artist_genres: dict[str, list[str]] = {}
+        for tr in (time_range, "long_term", "medium_term"):
+            for offset in (0, 50):
+                data = sp.current_user_top_artists(time_range=tr, limit=50, offset=offset)
+                for a in data.get("items") or []:
+                    if a.get("id"):
+                        artist_genres[a["id"]] = [g.lower() for g in (a.get("genres") or [])]
+                if not data.get("next"):
+                    break
+
+        # Fetch top tracks across all pages
         all_tracks: list[dict] = []
         seen_uris: set[str] = set()
         for page in range(pages):
@@ -123,20 +129,22 @@ class SpotifyClient:
                     seen_uris.add(uri)
                     all_tracks.append(t)
             if not data.get("next"):
-                break  # no more pages
+                break
 
-        # Collect unique artist IDs across all tracks
-        artist_id_map: dict[str, str] = {}  # id → name
-        for t in all_tracks:
-            for a in t.get("artists") or []:
-                if a.get("id"):
-                    artist_id_map[a["id"]] = a.get("name", "")
-
-        # Batch-fetch artist metadata for genre tags
-        artist_genres: dict[str, list[str]] = {}
-        for artist in self.artists_batch(list(artist_id_map)):
-            if artist and artist.get("id"):
-                artist_genres[artist["id"]] = [g.lower() for g in (artist.get("genres") or [])]
+        # For artists not in top-artists, try individual lookups (capped at 30)
+        unknown_ids = {
+            a["id"]
+            for t in all_tracks
+            for a in (t.get("artists") or [])
+            if a.get("id") and a["id"] not in artist_genres
+        }
+        for artist_id in list(unknown_ids)[:30]:
+            try:
+                a = sp.artist(artist_id)
+                if a and a.get("id"):
+                    artist_genres[a["id"]] = [g.lower() for g in (a.get("genres") or [])]
+            except Exception:
+                pass
 
         # Filter tracks — keep if any artist has a matching genre tag
         matched: list[dict] = []
