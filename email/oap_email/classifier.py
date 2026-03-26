@@ -385,8 +385,12 @@ async def classify_uncategorized(
         # ("Payment details are inside.") even for legitimate receipts/notifications.
         body = (row.get("body_text") or row.get("snippet") or "")[:800]
 
-        # Tier: fast local spam model (qwen3:2b) — cheaper than full category+priority LLM
-        if spam_cfg and spam_cfg.enabled:
+        # Tier: fast local spam model (qwen3:2b) — cheaper than full category+priority LLM.
+        # Skip when escalation is enabled: the biased small model causes false positives on
+        # legitimate receipts/security alerts that Claude classifies correctly. Header
+        # heuristics above already catch high-confidence spam either way.
+        use_escalation = cfg.use_escalation and escalation and escalation.enabled
+        if spam_cfg and spam_cfg.enabled and not use_escalation:
             label, score = await _classify_spam_local(
                 cfg, spam_cfg, from_email,
                 row.get("subject", ""), body,
