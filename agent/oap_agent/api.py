@@ -1431,20 +1431,23 @@ async def get_usage(days: int = 30):
     return _db.get_usage_summary(min(max(1, days), 365))
 
 
-@app.post("/v1/agent/usage")
-async def record_usage(req: Request):
-    """Record LLM usage from external services (e.g. email classifier).
+class UsageRecord(BaseModel):
+    provider: str = "unknown"
+    model: str = "unknown"
+    input_tokens: int = 0
+    output_tokens: int = 0
 
-    Accepts: {provider, model, input_tokens, output_tokens, source?}
-    """
+
+@app.post("/v1/agent/usage")
+async def record_usage(req: UsageRecord):
+    """Record LLM usage from external services (e.g. email classifier)."""
     if _db is None:
         raise HTTPException(status_code=503, detail="Service unavailable")
-    body = await req.json()
     _db.record_llm_usage(
-        provider=body.get("provider", "unknown"),
-        model=body.get("model", "unknown"),
-        input_tokens=int(body.get("input_tokens", 0)),
-        output_tokens=int(body.get("output_tokens", 0)),
+        provider=req.provider,
+        model=req.model,
+        input_tokens=req.input_tokens,
+        output_tokens=req.output_tokens,
     )
     return {"recorded": True}
 
