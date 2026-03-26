@@ -230,13 +230,23 @@ async def classify_message_escalated(
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"]
 
-        # Log token usage for cost visibility
+        # Log token usage and report to agent for unified cost tracking
         usage = data.get("usage", {})
         inp = usage.get("input_tokens", 0)
         out = usage.get("output_tokens", 0)
         if inp or out:
             cost = (inp / 1_000_000) * 1.00 + (out / 1_000_000) * 5.00  # Haiku 4.5 rates
             log.debug("escalated classify %s: %d in + %d out tokens (~$%.5f)", escalation.model, inp, out, cost)
+            try:
+                client = _get_client(cfg)
+                await client.post(
+                    "http://localhost:8303/v1/agent/usage",
+                    json={"provider": escalation.provider, "model": escalation.model,
+                          "input_tokens": inp, "output_tokens": out},
+                    timeout=2.0,
+                )
+            except Exception:
+                pass  # usage reporting is best-effort
 
         # Strip markdown code fences — Haiku wraps JSON in ```json ... ``` blocks
         start, end = content.find("{"), content.rfind("}")
