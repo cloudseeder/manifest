@@ -146,6 +146,7 @@ class SMTPConfig:
     username: str = ""
     password: str = ""
     use_tls: bool = True
+    from_addr: str = ""  # Sender address — defaults to username if not set
 
 
 @dataclass

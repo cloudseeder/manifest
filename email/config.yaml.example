@@ -95,3 +95,4 @@ auto_file:
 #   username: "you@gmail.com"
 #   password: "your-app-password"     # or OAP_SMTP_PASSWORD env var
 #   use_tls: true
+#   from_addr: "You <you@gmail.com>"  # Sender address — defaults to username if not set

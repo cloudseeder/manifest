@@ -47,5 +47,5 @@ def _send_sync(cfg: SMTPConfig, draft: dict, from_addr: str) -> None:
 
 async def send_draft(cfg: SMTPConfig, draft: dict) -> None:
     """Async wrapper — sends an approved draft via SMTP."""
-    from_addr = cfg.username
+    from_addr = cfg.from_addr or cfg.username
     await asyncio.to_thread(_send_sync, cfg, draft, from_addr)
