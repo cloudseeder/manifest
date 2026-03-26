@@ -143,6 +143,10 @@ async def classify_message(
     return {"category": category, "priority": priority}
 
 
+# Set to True when the API reports credit exhaustion — stops retrying for the session
+_escalation_disabled: bool = False
+
+
 async def classify_message_escalated(
     cfg: ClassifierConfig,
     escalation: EscalationConfig,
@@ -152,6 +156,9 @@ async def classify_message_escalated(
     snippet: str,
 ) -> dict[str, str] | None:
     """Classify via big LLM (Claude/GPT-4). Returns {"category": ..., "priority": ...}."""
+    global _escalation_disabled
+    if _escalation_disabled:
+        return None
     api_key = escalation.api_key or os.environ.get(
         "OAP_ESCALATION_API_KEY",
         os.environ.get(f"OAP_{escalation.provider.upper()}_API_KEY", ""),
@@ -246,7 +253,11 @@ async def classify_message_escalated(
 
     except httpx.HTTPStatusError as exc:
         body = exc.response.text[:500] if exc.response is not None else ""
-        log.warning("Escalated classification failed: %s — %s", exc, body)
+        if "credit balance is too low" in body or "insufficient_quota" in body:
+            _escalation_disabled = True
+            log.warning("Escalation disabled — API credit exhausted. Top up at Plans & Billing.")
+        else:
+            log.warning("Escalated classification failed: %s — %s", exc, body)
         return None
     except Exception as exc:
         log.warning("Escalated classification failed: %s", exc)
