@@ -198,20 +198,30 @@ async def refile():
 
 
 @app.post("/reclassify")
-async def reclassify(category: str | None = Query(None)):
-    """Reset categories and reclassify. Pass ?category=mailing-list to target only one category."""
+async def reclassify(category: str | None = Query(None), hours: int | None = Query(None)):
+    """Reset categories and reclassify.
+
+    ?category=mailing-list  — target only one category
+    ?hours=24               — only messages received in the last N hours
+    Both filters can be combined.
+    """
     if not _db:
         raise HTTPException(status_code=503, detail="Service unavailable")
     if not _cfg or not _cfg.classifier.enabled:
         raise HTTPException(status_code=400, detail="Classifier not enabled")
 
+    since: str | None = None
+    if hours is not None:
+        from datetime import datetime, timezone, timedelta
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+
     if category:
-        reset = _db.reset_category(category)
-        log.info("Reset %d '%s' messages for targeted reclassification", reset, category)
+        reset = _db.reset_category(category, since=since)
+        log.info("Reset %d '%s' messages for targeted reclassification (since=%s)", reset, category, since)
     else:
-        reset = _db.reset_categories()
-        _db.reset_priorities()
-        log.info("Reset %d message categories for reclassification", reset)
+        reset = _db.reset_categories(since=since)
+        _db.reset_priorities(since=since)
+        log.info("Reset %d message categories for reclassification (since=%s)", reset, since)
 
     from .classifier import classify_uncategorized
     classified = 0
@@ -220,7 +230,7 @@ async def reclassify(category: str | None = Query(None)):
         classified += batch
         if batch == 0:
             break
-    return {"reset": reset, "classified": classified, "category_filter": category}
+    return {"reset": reset, "classified": classified, "category_filter": category, "since": since}
 
 
 # ---------------------------------------------------------------------------

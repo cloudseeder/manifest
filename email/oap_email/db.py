@@ -386,25 +386,43 @@ class EmailDB:
             self.conn.commit()
             return cur.rowcount
 
-    def reset_categories(self) -> int:
+    def reset_categories(self, since: str | None = None) -> int:
         """Clear all categories so messages get reclassified."""
         with self._lock:
-            cur = self.conn.execute("UPDATE messages SET category = NULL WHERE category IS NOT NULL")
+            if since:
+                cur = self.conn.execute(
+                    "UPDATE messages SET category = NULL WHERE category IS NOT NULL AND received_at >= ?",
+                    (since,),
+                )
+            else:
+                cur = self.conn.execute("UPDATE messages SET category = NULL WHERE category IS NOT NULL")
             self.conn.commit()
             return cur.rowcount
 
-    def reset_category(self, category: str) -> int:
+    def reset_category(self, category: str, since: str | None = None) -> int:
         """Snapshot category/priority into prev_* columns, then clear for reclassification."""
         with self._lock:
-            self.conn.execute(
-                "UPDATE messages SET prev_category = category, prev_priority = priority "
-                "WHERE category = ?",
-                (category,),
-            )
-            cur = self.conn.execute(
-                "UPDATE messages SET category = NULL, priority = NULL WHERE prev_category = ?",
-                (category,),
-            )
+            if since:
+                self.conn.execute(
+                    "UPDATE messages SET prev_category = category, prev_priority = priority "
+                    "WHERE category = ? AND received_at >= ?",
+                    (category, since),
+                )
+                cur = self.conn.execute(
+                    "UPDATE messages SET category = NULL, priority = NULL "
+                    "WHERE prev_category = ? AND received_at >= ?",
+                    (category, since),
+                )
+            else:
+                self.conn.execute(
+                    "UPDATE messages SET prev_category = category, prev_priority = priority "
+                    "WHERE category = ?",
+                    (category,),
+                )
+                cur = self.conn.execute(
+                    "UPDATE messages SET category = NULL, priority = NULL WHERE prev_category = ?",
+                    (category,),
+                )
             self.conn.commit()
             return cur.rowcount
 
@@ -440,10 +458,16 @@ class EmailDB:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def reset_priorities(self) -> int:
+    def reset_priorities(self, since: str | None = None) -> int:
         """Clear all priorities so messages get reprioritized."""
         with self._lock:
-            cur = self.conn.execute("UPDATE messages SET priority = NULL WHERE priority IS NOT NULL")
+            if since:
+                cur = self.conn.execute(
+                    "UPDATE messages SET priority = NULL WHERE priority IS NOT NULL AND received_at >= ?",
+                    (since,),
+                )
+            else:
+                cur = self.conn.execute("UPDATE messages SET priority = NULL WHERE priority IS NOT NULL")
             self.conn.commit()
             return cur.rowcount
 
