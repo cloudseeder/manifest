@@ -211,12 +211,19 @@ class SpotifyClient:
 
     def add_tracks(self, playlist_id: str, track_uris: list[str]) -> dict:
         sp = self._client()
-        return sp.playlist_add_items(playlist_id, track_uris)
+        result = {}
+        for i in range(0, len(track_uris), 100):
+            result = sp.playlist_add_items(playlist_id, track_uris[i:i + 100])
+        return result
 
     def replace_tracks(self, playlist_id: str, track_uris: list[str]) -> dict:
         """Replace all tracks in an existing playlist."""
         sp = self._client()
-        return sp.playlist_replace_items(playlist_id, track_uris)
+        # Replace clears the playlist and adds the first batch; subsequent batches append
+        result = sp.playlist_replace_items(playlist_id, track_uris[:100])
+        for i in range(100, len(track_uris), 100):
+            result = sp.playlist_add_items(playlist_id, track_uris[i:i + 100])
+        return result
 
     def find_playlist_by_name(self, name: str, marker: str | None = None) -> dict | None:
         """Return the first owned playlist matching name exactly, or None.
