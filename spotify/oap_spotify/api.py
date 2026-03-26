@@ -151,6 +151,30 @@ async def top_tracks(
         raise HTTPException(status_code=502, detail=str(e))
 
 
+@app.get("/proxy/me/top/tracks/filtered")
+async def top_tracks_filtered(
+    genres: str = Query(..., description="Comma-separated genre keywords, e.g. 'texas,americana,country,folk'"),
+    time_range: str = Query("long_term", pattern="^(short_term|medium_term|long_term)$"),
+    pages: int = Query(4, ge=1, le=4),
+):
+    """Fetch top tracks filtered by Spotify artist genre tags.
+
+    Fetches up to pages*50 tracks, batch-looks up artist genres, and returns
+    only tracks whose artists match any of the genre keywords.
+    """
+    c = _require_client()
+    try:
+        genre_list = [g.strip() for g in genres.split(",") if g.strip()]
+        result = c.top_tracks_filtered(genres=genre_list, time_range=time_range, pages=pages)
+        log.info("top_tracks_filtered: %d/%d matched %s", result["total_matched"], result["total_fetched"], genre_list)
+        return result
+    except RuntimeError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        log.error("top_tracks_filtered error: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 @app.get("/proxy/me/player/recently-played")
 async def recently_played(
     limit: int = Query(20, ge=1, le=50),

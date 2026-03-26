@@ -1,0 +1,24 @@
+{
+  "oap": "1.0",
+  "name": "spotify-top-tracks-filtered",
+  "description": "Fetch top tracks filtered by genre — returns only tracks whose Spotify artist genre tags match the given keywords. Handles all pagination and artist lookups server-side. Use for playlist tasks like 'my top Texas/Americana/Country/Folk tracks' or 'filter my top songs by genre'. Returns track URIs ready to pass directly to the upsert playlist tool.",
+  "input": {
+    "format": "application/json",
+    "description": "genres is a comma-separated list of genre keywords to match (case-insensitive substring match against Spotify genre tags). time_range and pages are optional.",
+    "parameters": {
+      "genres": {"type": "string", "description": "Comma-separated genre keywords, e.g. 'texas,americana,country,folk'", "required": true},
+      "time_range": {"type": "string", "description": "short_term (4 weeks), medium_term (6 months), long_term (all time, default)", "required": false},
+      "pages": {"type": "integer", "description": "Number of pages to fetch, 1-4 (default: 4 = up to 200 tracks)", "required": false}
+    }
+  },
+  "output": {
+    "format": "application/json",
+    "description": "Returns {tracks: [{uri, name, artists, genres}], total_fetched, total_matched, genres_used}. Pass tracks[*].uri directly to spotify-upsert-playlist."
+  },
+  "invoke": {
+    "method": "GET",
+    "url": "http://localhost:8306/proxy/me/top/tracks/filtered"
+  },
+  "usage": "GET /proxy/me/top/tracks/filtered?genres=texas,americana,country,folk&time_range=long_term",
+  "tags": ["spotify", "music", "tracks", "filter", "genre", "americana", "country", "folk", "playlist"]
+}
