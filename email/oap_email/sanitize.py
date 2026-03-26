@@ -47,6 +47,7 @@ def html_to_text(html: str) -> str:
 
     # Normalize whitespace
     text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)  # strip spaces flanking newlines
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
