@@ -156,17 +156,43 @@ async def top_tracks_filtered(
     genres: str = Query(..., description="Comma-separated genre keywords, e.g. 'texas,americana,country,folk'"),
     time_range: str = Query("long_term", pattern="^(short_term|medium_term|long_term)$"),
     pages: int = Query(4, ge=1, le=4),
+    playlist_name: str | None = Query(None, description="If set, upsert results into this playlist name automatically"),
 ):
     """Fetch top tracks filtered by genre using local LLM artist classification.
 
     Fetches up to pages*50 tracks, asks qwen3 which artists match the genre
     keywords, and returns only tracks by those artists.
+
+    If playlist_name is provided, also upserts the matched tracks into that
+    playlist (creating it if it doesn't exist, replacing tracks if it does).
     """
     c = _require_client()
     try:
         genre_list = [g.strip() for g in genres.split(",") if g.strip()]
         result = c.top_tracks_filtered(genres=genre_list, time_range=time_range, pages=pages)
         log.info("top_tracks_filtered: %d/%d matched %s", result["total_matched"], result["total_fetched"], genre_list)
+
+        if playlist_name and result["tracks"]:
+            track_uris = [t["uri"] for t in result["tracks"]]
+            existing = c.find_playlist_by_name(playlist_name, marker=_OAP_MARKER)
+            if existing:
+                c.replace_tracks(existing["id"], track_uris)
+                playlist_id = existing["id"]
+                created = False
+                log.info("top_tracks_filtered: replaced %d tracks in '%s'", len(track_uris), playlist_name)
+            else:
+                pl = c.create_playlist(playlist_name, description=f"[{_OAP_MARKER}]", public=False)
+                playlist_id = pl["id"]
+                c.add_tracks(playlist_id, track_uris)
+                created = True
+                log.info("top_tracks_filtered: created '%s' with %d tracks", playlist_name, len(track_uris))
+            result["playlist"] = {
+                "id": playlist_id,
+                "name": playlist_name,
+                "created": created,
+                "track_count": len(track_uris),
+            }
+
         return result
     except RuntimeError as e:
         raise HTTPException(status_code=401, detail=str(e))
