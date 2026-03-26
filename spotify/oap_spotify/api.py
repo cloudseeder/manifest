@@ -132,14 +132,16 @@ async def top_artists(
 async def top_tracks(
     time_range: str = Query("medium_term", pattern="^(short_term|medium_term|long_term)$"),
     limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0, le=200),
 ):
     """Return user's top tracks.
 
     time_range: short_term (4 weeks), medium_term (6 months), long_term (years).
+    offset: pagination — use 0, 50, 100, 150 to get up to 200 tracks across 4 calls.
     """
     c = _require_client()
     try:
-        data = c.top_tracks(time_range=time_range, limit=limit)
+        data = c.top_tracks(time_range=time_range, limit=limit, offset=offset)
         data["items"] = [_slim_track(t) for t in data.get("items", [])]
         return data
     except RuntimeError as e:

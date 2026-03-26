@@ -7,7 +7,8 @@
     "description": "time_range controls the window: short_term (4 weeks), medium_term (6 months, default), long_term (all time). limit is 1-50 (default: 20).",
     "parameters": {
       "time_range": {"type": "string", "description": "short_term (4 weeks), medium_term (6 months, default), long_term (all time)", "required": false},
-      "limit": {"type": "integer", "description": "Number of tracks 1-50 (default: 20)", "required": false}
+      "limit": {"type": "integer", "description": "Number of tracks 1-50 (default: 20)", "required": false},
+      "offset": {"type": "integer", "description": "Pagination offset (default: 0). Call with offset=0, 50, 100, 150 to get up to 200 tracks across 4 calls.", "required": false}
     }
   },
   "output": {

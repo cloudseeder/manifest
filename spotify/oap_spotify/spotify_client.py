@@ -55,9 +55,9 @@ class SpotifyClient:
         sp = self._client()
         return sp.current_user_top_artists(time_range=time_range, limit=limit)
 
-    def top_tracks(self, time_range: str = "medium_term", limit: int = 20) -> dict:
+    def top_tracks(self, time_range: str = "medium_term", limit: int = 20, offset: int = 0) -> dict:
         sp = self._client()
-        return sp.current_user_top_tracks(time_range=time_range, limit=limit)
+        return sp.current_user_top_tracks(time_range=time_range, limit=limit, offset=offset)
 
     def recently_played(self, limit: int = 20) -> dict:
         sp = self._client()
