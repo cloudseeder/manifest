@@ -1348,14 +1348,6 @@ async def sse_events():
     return StreamingResponse(stream(), media_type="text/event-stream")
 
 
-@app.get("/v1/agent/usage")
-async def get_usage(days: int = 30):
-    """LLM token usage and cost estimates for the last N days."""
-    if _db is None:
-        raise HTTPException(status_code=503, detail="Service unavailable")
-    return _db.get_usage_summary(days=days)
-
-
 @app.get("/v1/agent/health")
 async def health():
     if _db is None:
