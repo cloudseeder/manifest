@@ -387,15 +387,46 @@ class EmailDB:
             return cur.rowcount
 
     def reset_categories(self, since: str | None = None) -> int:
-        """Clear all categories so messages get reclassified."""
+        """Clear all categories so messages get reclassified (snapshots prev_category for diff)."""
         with self._lock:
             if since:
+                self.conn.execute(
+                    "UPDATE messages SET prev_category = category, prev_priority = priority "
+                    "WHERE category IS NOT NULL AND received_at >= ?",
+                    (since,),
+                )
                 cur = self.conn.execute(
-                    "UPDATE messages SET category = NULL WHERE category IS NOT NULL AND received_at >= ?",
+                    "UPDATE messages SET category = NULL, priority = NULL "
+                    "WHERE category IS NOT NULL AND received_at >= ?",
                     (since,),
                 )
             else:
-                cur = self.conn.execute("UPDATE messages SET category = NULL WHERE category IS NOT NULL")
+                self.conn.execute(
+                    "UPDATE messages SET prev_category = category, prev_priority = priority "
+                    "WHERE category IS NOT NULL",
+                )
+                cur = self.conn.execute(
+                    "UPDATE messages SET category = NULL, priority = NULL WHERE category IS NOT NULL"
+                )
+            self.conn.commit()
+            return cur.rowcount
+
+    def reset_filed_for_changed(self, since: str | None = None) -> int:
+        """Reset filed flag for messages whose category changed vs prev_category snapshot."""
+        with self._lock:
+            if since:
+                cur = self.conn.execute(
+                    "UPDATE messages SET filed = 0 "
+                    "WHERE prev_category IS NOT NULL AND category IS NOT NULL "
+                    "AND category != prev_category AND received_at >= ?",
+                    (since,),
+                )
+            else:
+                cur = self.conn.execute(
+                    "UPDATE messages SET filed = 0 "
+                    "WHERE prev_category IS NOT NULL AND category IS NOT NULL "
+                    "AND category != prev_category",
+                )
             self.conn.commit()
             return cur.rowcount
 

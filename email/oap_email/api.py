@@ -230,7 +230,16 @@ async def reclassify(category: str | None = Query(None), hours: int | None = Que
         classified += batch
         if batch == 0:
             break
-    return {"reset": reset, "classified": classified, "category_filter": category, "since": since}
+
+    # Refile messages whose category changed
+    refiled: dict = {}
+    if _cfg.auto_file.enabled and _cfg.imap.host:
+        changed = _db.reset_filed_for_changed(since=since)
+        if changed:
+            refiled = await file_messages()
+            log.info("Reclassify triggered refile: %d changed, %s", changed, refiled)
+
+    return {"reset": reset, "classified": classified, "category_filter": category, "since": since, **refiled}
 
 
 # ---------------------------------------------------------------------------
