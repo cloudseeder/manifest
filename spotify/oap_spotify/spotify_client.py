@@ -92,6 +92,7 @@ class SpotifyClient:
         genres: list[str],
         time_range: str = "long_term",
         pages: int = 4,
+        debug: bool = False,
     ) -> dict:
         """Fetch up to pages*50 top tracks, filter by artist genre keywords.
 
@@ -160,12 +161,36 @@ class SpotifyClient:
                     "genres": sorted(track_genres),
                 })
 
-        return {
+        result: dict = {
             "tracks": matched,
             "total_fetched": len(all_tracks),
             "total_matched": len(matched),
             "genres_used": genres,
         }
+        if debug:
+            # Collect all unique genre tags seen across top-track artists
+            all_genres: set[str] = set()
+            for aid, tags in artist_genres.items():
+                all_genres.update(tags)
+            # Sample: first 20 top-track artists with their genre tags
+            sample: list[dict] = []
+            seen: set[str] = set()
+            for t in all_tracks:
+                for a in t.get("artists") or []:
+                    aid = a.get("id", "")
+                    if aid and aid not in seen and aid in artist_genres:
+                        seen.add(aid)
+                        sample.append({"artist": a["name"], "genres": artist_genres[aid]})
+                        if len(sample) >= 20:
+                            break
+                if len(sample) >= 20:
+                    break
+            result["debug"] = {
+                "artists_in_genre_map": len(artist_genres),
+                "unique_genres_found": sorted(all_genres),
+                "sample_artists": sample,
+            }
+        return result
 
     def saved_tracks(self, limit: int = 50) -> dict:
         sp = self._client()

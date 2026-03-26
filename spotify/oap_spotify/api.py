@@ -156,16 +156,18 @@ async def top_tracks_filtered(
     genres: str = Query(..., description="Comma-separated genre keywords, e.g. 'texas,americana,country,folk'"),
     time_range: str = Query("long_term", pattern="^(short_term|medium_term|long_term)$"),
     pages: int = Query(4, ge=1, le=4),
+    debug: bool = Query(False, description="Include genre map debug info in response"),
 ):
     """Fetch top tracks filtered by Spotify artist genre tags.
 
     Fetches up to pages*50 tracks, batch-looks up artist genres, and returns
     only tracks whose artists match any of the genre keywords.
+    Add ?debug=true to see all genres found across top-track artists.
     """
     c = _require_client()
     try:
         genre_list = [g.strip() for g in genres.split(",") if g.strip()]
-        result = c.top_tracks_filtered(genres=genre_list, time_range=time_range, pages=pages)
+        result = c.top_tracks_filtered(genres=genre_list, time_range=time_range, pages=pages, debug=debug)
         log.info("top_tracks_filtered: %d/%d matched %s", result["total_matched"], result["total_fetched"], genre_list)
         return result
     except RuntimeError as e:
