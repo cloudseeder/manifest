@@ -186,11 +186,14 @@ async def top_tracks_filtered(
                 c.add_tracks(playlist_id, track_uris)
                 created = True
                 log.info("top_tracks_filtered: created '%s' with %d tracks", playlist_name, len(track_uris))
-            result["playlist"] = {
-                "id": playlist_id,
-                "name": playlist_name,
+            # Return compact confirmation — LLM doesn't need the full track list
+            return {
+                "playlist_id": playlist_id,
+                "playlist_name": playlist_name,
                 "created": created,
                 "track_count": len(track_uris),
+                "genres_used": genres,
+                "total_fetched": result["total_fetched"],
             }
 
         return result
