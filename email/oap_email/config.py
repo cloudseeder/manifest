@@ -32,7 +32,9 @@ _DEFAULT_CATEGORIES: dict[str, str] = {
     "machine": (
         "automated/system-generated with no human author: server alerts, "
         "cron output, cPanel, disk space warnings, security scans, WordPress updates, "
-        "CI/CD, monitoring, settlement reports, auth codes"
+        "CI/CD, monitoring, settlement reports, auth codes, "
+        "payment receipts and transaction confirmations (PayPal, Stripe, Square, Venmo, "
+        "bank statements, invoices showing 'You paid $X' or 'Your payment of $X')"
     ),
     "mailing-list": (
         "informational newsletters, news digests, editorial content, "
@@ -40,7 +42,11 @@ _DEFAULT_CATEGORIES: dict[str, str] = {
         "NOT social notifications about people you know (those are personal). "
         "NOT promotional offers (those are offers)"
     ),
-    "spam": "junk, phishing, unsolicited bulk email, adult content",
+    "spam": (
+        "junk, phishing, unsolicited bulk email, adult content. "
+        "NOT legitimate security alerts from known services (Firebase, Google, AWS) — those are machine. "
+        "NOT payment receipts from PayPal/Stripe/Square — those are machine."
+    ),
     "offers": (
         "selling something: sales, promotions, deals, coupons, discounts, "
         "event tickets, subscription renewals, product launches, service upgrades"
