@@ -391,9 +391,13 @@ def _move_messages_sync(
             by_source.setdefault(source, []).append((uid, target))
 
         for source_folder, uid_targets in by_source.items():
-            status, _ = conn.select(source_folder)
+            # Apply namespace prefix to source folder too (DB stores bare names)
+            full_source = source_folder
+            if prefix and not source_folder.startswith(prefix) and source_folder.upper() != "INBOX":
+                full_source = prefix + source_folder
+            status, _ = conn.select(full_source)
             if status != "OK":
-                log.error("IMAP SELECT %s failed", source_folder)
+                log.error("IMAP SELECT %s failed", full_source)
                 continue
 
             for uid, target_folder in uid_targets:
