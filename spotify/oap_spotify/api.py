@@ -204,6 +204,51 @@ async def top_tracks_filtered(
         raise HTTPException(status_code=502, detail=str(e))
 
 
+@app.get("/proxy/me/daily-mix")
+async def daily_mix(
+    limit: int = Query(50, ge=1, le=100),
+    playlist_name: str | None = Query(None, description="If set, upsert results into this playlist automatically"),
+):
+    """Build a daily mix from recently played + short-term top tracks, deduplicated.
+
+    Combines up to 50 recently played and 50 short-term top tracks, deduplicates
+    by URI, and returns up to `limit` tracks. If playlist_name is provided,
+    also upserts the tracks into that playlist in one step.
+    """
+    c = _require_client()
+    try:
+        result = c.daily_mix(limit=limit)
+        log.info("daily_mix: %d tracks combined", result["track_count"])
+
+        if playlist_name and result["tracks"]:
+            track_uris = [t["uri"] for t in result["tracks"]]
+            existing = c.find_playlist_by_name(playlist_name, marker=_OAP_MARKER)
+            if existing:
+                c.replace_tracks(existing["id"], track_uris)
+                playlist_id = existing["id"]
+                created = False
+                log.info("daily_mix: replaced %d tracks in '%s'", len(track_uris), playlist_name)
+            else:
+                pl = c.create_playlist(playlist_name, description=f"[{_OAP_MARKER}]", public=False)
+                playlist_id = pl["id"]
+                c.add_tracks(playlist_id, track_uris)
+                created = True
+                log.info("daily_mix: created '%s' with %d tracks", playlist_name, len(track_uris))
+            return {
+                "playlist_id": playlist_id,
+                "playlist_name": playlist_name,
+                "created": created,
+                "track_count": len(track_uris),
+            }
+
+        return result
+    except RuntimeError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        log.error("daily_mix error: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 @app.get("/proxy/me/player/recently-played")
 async def recently_played(
     limit: int = Query(20, ge=1, le=50),

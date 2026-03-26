@@ -1,0 +1,23 @@
+{
+  "oap": "1.0",
+  "name": "spotify-daily-mix",
+  "description": "Build a daily mix playlist from recently played and short-term top tracks — combines and deduplicates both sources server-side. Use for tasks like 'update my Daily Mix playlist' or 'refresh my daily mix'. Pass playlist_name to create or update the playlist in one step.",
+  "input": {
+    "format": "application/json",
+    "description": "All parameters are optional. playlist_name triggers automatic upsert.",
+    "parameters": {
+      "playlist_name": {"type": "string", "description": "If set, upserts the mix into this playlist (creates if new, replaces tracks if existing OAP-managed playlist)", "required": false},
+      "limit": {"type": "integer", "description": "Max tracks to include (default: 50, max: 100)", "required": false}
+    }
+  },
+  "output": {
+    "format": "application/json",
+    "description": "If playlist_name set: {playlist_id, playlist_name, created, track_count}. Otherwise: {tracks: [{uri, name, artists}], total_combined, track_count}."
+  },
+  "invoke": {
+    "method": "GET",
+    "url": "http://localhost:8306/proxy/me/daily-mix"
+  },
+  "usage": "GET /proxy/me/daily-mix?playlist_name=Daily+Mix+by+Manifest",
+  "tags": ["spotify", "music", "playlist", "daily", "mix", "recently-played", "top-tracks"]
+}

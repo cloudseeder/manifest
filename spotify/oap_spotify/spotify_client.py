@@ -192,6 +192,52 @@ class SpotifyClient:
             "genres_used": genres,
         }
 
+    def daily_mix(
+        self,
+        limit: int = 50,
+        recent_limit: int = 50,
+        top_limit: int = 50,
+    ) -> dict:
+        """Combine recently played + short-term top tracks, deduplicated.
+
+        Returns up to `limit` unique tracks ordered by recency/rank,
+        ready to pass to upsert.
+        """
+        sp = self._client()
+
+        # Recently played (most recent first)
+        recent_data = sp.current_user_recently_played(limit=recent_limit)
+        seen_uris: set[str] = set()
+        tracks: list[dict] = []
+        for item in recent_data.get("items") or []:
+            t = item.get("track") or {}
+            uri = t.get("uri", "")
+            if uri and uri not in seen_uris:
+                seen_uris.add(uri)
+                tracks.append({
+                    "uri": uri,
+                    "name": t.get("name", ""),
+                    "artists": [a["name"] for a in t.get("artists", [])],
+                })
+
+        # Short-term top tracks (fill remaining slots)
+        top_data = sp.current_user_top_tracks(time_range="short_term", limit=top_limit)
+        for t in top_data.get("items") or []:
+            uri = t.get("uri", "")
+            if uri and uri not in seen_uris:
+                seen_uris.add(uri)
+                tracks.append({
+                    "uri": uri,
+                    "name": t.get("name", ""),
+                    "artists": [a["name"] for a in t.get("artists", [])],
+                })
+
+        return {
+            "tracks": tracks[:limit],
+            "total_combined": len(tracks),
+            "track_count": min(len(tracks), limit),
+        }
+
     def saved_tracks(self, limit: int = 50) -> dict:
         sp = self._client()
         return sp.current_user_saved_tracks(limit=limit)
