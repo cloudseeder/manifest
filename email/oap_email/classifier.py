@@ -381,11 +381,15 @@ async def classify_uncategorized(
                      "spam", "noise", heuristic_tag, from_email, row.get("subject", "")[:50])
             continue
 
+        # Use body_text when available — snippet alone can look like phishing bait
+        # ("Payment details are inside.") even for legitimate receipts/notifications.
+        body = (row.get("body_text") or row.get("snippet") or "")[:800]
+
         # Tier: fast local spam model (qwen3:2b) — cheaper than full category+priority LLM
         if spam_cfg and spam_cfg.enabled:
             label, score = await _classify_spam_local(
                 cfg, spam_cfg, from_email,
-                row.get("subject", ""), row.get("snippet", ""),
+                row.get("subject", ""), body,
             )
             if label == "spam" and score >= spam_cfg.spam_threshold:
                 db.set_classification(row["id"], "spam", "noise")
@@ -402,7 +406,7 @@ async def classify_uncategorized(
                 from_name=row.get("from_name", ""),
                 from_email=from_email,
                 subject=row.get("subject", ""),
-                snippet=row.get("snippet", ""),
+                snippet=body,
             )
         else:
             result = await classify_message(
@@ -410,7 +414,7 @@ async def classify_uncategorized(
                 from_name=row.get("from_name", ""),
                 from_email=from_email,
                 subject=row.get("subject", ""),
-                snippet=row.get("snippet", ""),
+                snippet=body,
             )
 
         if result:
