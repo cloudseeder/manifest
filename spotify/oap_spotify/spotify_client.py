@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
+import httpx
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
@@ -87,37 +89,64 @@ class SpotifyClient:
         sp = self._client()
         return sp.artist_related_artists(artist_id)
 
+    def _classify_artists_by_genre(
+        self,
+        artist_names: list[str],
+        genres: list[str],
+        ollama_url: str = "http://localhost:11434",
+    ) -> set[str]:
+        """Ask qwen3 which artist names match the given genre keywords.
+
+        Returns the set of matching artist names (lowercased for comparison).
+        Falls back to returning all artists if the LLM call fails.
+        """
+        if not artist_names:
+            return set()
+        genre_str = ", ".join(genres)
+        artist_list = "\n".join(f"- {n}" for n in artist_names)
+        prompt = (
+            f"You are a music genre classifier. Given this list of artist names, "
+            f"return a JSON array containing ONLY the names of artists whose primary "
+            f"music style fits any of these genres: {genre_str}.\n\n"
+            f"Artists:\n{artist_list}\n\n"
+            f"Return ONLY a valid JSON array of matching artist names, nothing else. "
+            f"Example: [\"Artist One\", \"Artist Two\"]"
+        )
+        try:
+            resp = httpx.post(
+                f"{ollama_url}/api/generate",
+                json={"model": "qwen3:8b", "prompt": prompt, "stream": False,
+                      "options": {"temperature": 0, "num_predict": 1024}, "think": False},
+                timeout=60.0,
+            )
+            resp.raise_for_status()
+            raw = resp.json().get("response", "").strip()
+            # Extract JSON array from response (may have extra text)
+            start, end = raw.find("["), raw.rfind("]")
+            if start != -1 and end != -1:
+                matched = json.loads(raw[start:end + 1])
+                log.info("LLM classified %d/%d artists as %s", len(matched), len(artist_names), genres)
+                return {n.lower() for n in matched if isinstance(n, str)}
+        except Exception as exc:
+            log.warning("Artist genre classification failed: %s — returning all artists", exc)
+        return {n.lower() for n in artist_names}
+
     def top_tracks_filtered(
         self,
         genres: list[str],
         time_range: str = "long_term",
         pages: int = 4,
-        debug: bool = False,
+        ollama_url: str = "http://localhost:11434",
     ) -> dict:
-        """Fetch up to pages*50 top tracks, filter by artist genre keywords.
+        """Fetch up to pages*50 top tracks, filter by genre using qwen3.
 
-        Builds the genre map from top_artists (which includes genre data and
-        is not restricted) rather than the batch /v1/artists endpoint (403
-        for new Spotify apps). Falls back to individual artist lookups for
-        any artists not found in top artists.
+        Spotify's genre tags are restricted for development apps, so we
+        extract unique artist names from top tracks and ask qwen3 to
+        classify which ones match the requested genre keywords.
 
         Returns {tracks: [...], total_fetched, total_matched, genres_used}.
-        Genre matching is case-insensitive substring match against Spotify
-        artist genre tags (e.g. 'texas country', 'americana', 'folk').
         """
         sp = self._client()
-        genres_lower = [g.lower() for g in genres]
-
-        # Build genre map from top artists (includes genres, not restricted)
-        artist_genres: dict[str, list[str]] = {}
-        for tr in (time_range, "long_term", "medium_term"):
-            for offset in (0, 50):
-                data = sp.current_user_top_artists(time_range=tr, limit=50, offset=offset)
-                for a in data.get("items") or []:
-                    if a.get("id"):
-                        artist_genres[a["id"]] = [g.lower() for g in (a.get("genres") or [])]
-                if not data.get("next"):
-                    break
 
         # Fetch top tracks across all pages
         all_tracks: list[dict] = []
@@ -132,65 +161,36 @@ class SpotifyClient:
             if not data.get("next"):
                 break
 
-        # For artists not in top-artists, try individual lookups (capped at 30)
-        unknown_ids = {
-            a["id"]
-            for t in all_tracks
-            for a in (t.get("artists") or [])
-            if a.get("id") and a["id"] not in artist_genres
-        }
-        for artist_id in list(unknown_ids)[:30]:
-            try:
-                a = sp.artist(artist_id)
-                if a and a.get("id"):
-                    artist_genres[a["id"]] = [g.lower() for g in (a.get("genres") or [])]
-            except Exception:
-                pass
+        # Collect unique artist names from top tracks
+        unique_artists: dict[str, str] = {}  # name_lower -> display_name
+        for t in all_tracks:
+            for a in t.get("artists") or []:
+                name = a.get("name", "")
+                if name:
+                    unique_artists[name.lower()] = name
 
-        # Filter tracks — keep if any artist has a matching genre tag
+        # Ask qwen3 which artists match the genres
+        matched_artists = self._classify_artists_by_genre(
+            list(unique_artists.values()), genres, ollama_url=ollama_url
+        )
+
+        # Filter tracks — keep if any artist matched
         matched: list[dict] = []
         for t in all_tracks:
-            track_genres: set[str] = set()
-            for a in t.get("artists") or []:
-                track_genres.update(artist_genres.get(a.get("id", ""), []))
-            if any(kw in g for kw in genres_lower for g in track_genres):
+            track_artist_names = {(a.get("name") or "").lower() for a in t.get("artists") or []}
+            if track_artist_names & matched_artists:
                 matched.append({
                     "uri": t["uri"],
                     "name": t["name"],
                     "artists": [a["name"] for a in t.get("artists", [])],
-                    "genres": sorted(track_genres),
                 })
 
-        result: dict = {
+        return {
             "tracks": matched,
             "total_fetched": len(all_tracks),
             "total_matched": len(matched),
             "genres_used": genres,
         }
-        if debug:
-            # Collect all unique genre tags seen across top-track artists
-            all_genres: set[str] = set()
-            for aid, tags in artist_genres.items():
-                all_genres.update(tags)
-            # Sample: first 20 top-track artists with their genre tags
-            sample: list[dict] = []
-            seen: set[str] = set()
-            for t in all_tracks:
-                for a in t.get("artists") or []:
-                    aid = a.get("id", "")
-                    if aid and aid not in seen and aid in artist_genres:
-                        seen.add(aid)
-                        sample.append({"artist": a["name"], "genres": artist_genres[aid]})
-                        if len(sample) >= 20:
-                            break
-                if len(sample) >= 20:
-                    break
-            result["debug"] = {
-                "artists_in_genre_map": len(artist_genres),
-                "unique_genres_found": sorted(all_genres),
-                "sample_artists": sample,
-            }
-        return result
 
     def saved_tracks(self, limit: int = 50) -> dict:
         sp = self._client()
