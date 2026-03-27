@@ -760,12 +760,12 @@ async def chat(req: ChatRequest):
                 if greeting:
                     direct_briefing = (
                         f"{time_greeting}! You have {len(notifications)} update{'s' if len(notifications) != 1 else ''}:\n\n"
-                        + "\n".join(lines)
+                        + "\n\n".join(lines)
                     )
                 else:
                     direct_briefing = (
                         f"You have {len(notifications)} notification{'s' if len(notifications) != 1 else ''}:\n\n"
-                        + "\n".join(lines)
+                        + "\n\n".join(lines)
                     )
 
                 log.info("Briefing direct (%s, %d notification(s))", "greeting" if greeting else "query", len(notifications))

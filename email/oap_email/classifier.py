@@ -474,10 +474,15 @@ async def classify_uncategorized(
             )
 
         if result:
-            db.set_classification(row["id"], result["category"], result["priority"])
+            category = result["category"]
+            priority = result["priority"]
+            # Spam and noise categories should never surface as urgent/important
+            if category in ("spam", "noise") and priority in ("urgent", "important"):
+                priority = "noise"
+            db.set_classification(row["id"], category, priority)
             classified += 1
             log.info("%-13s %-13s %s — %s",
-                     result["category"], result["priority"],
+                     category, priority,
                      from_email, row.get("subject", "")[:50])
 
     log.info("Classified %d/%d message(s)", classified, len(rows))
