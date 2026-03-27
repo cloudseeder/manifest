@@ -1,0 +1,26 @@
+{
+  "oap": "1.0",
+  "name": "open-library",
+  "description": "Search for books by topic, title, or author using the Open Library catalog. Find books about any subject: 'find books about near death experiences', 'books by Carl Sagan', 'recommendations for quantum physics books', 'what books exist on ball lightning'. Returns title, author, first published year, and subjects.",
+  "input": {
+    "format": "application/json",
+    "description": "Search the Open Library catalog. Use q for general search (topic, title, author, or any combination). Use limit to control result count (default 10, max 20).",
+    "parameters": {
+      "q": {"type": "string", "description": "Search query — topic, title, author name, or any combination (e.g. 'near death experience', 'Carl Sagan cosmos', 'ball lightning physics')", "required": true},
+      "limit": {"type": "integer", "description": "Number of results to return (default 10, max 20)", "required": false}
+    }
+  },
+  "output": {
+    "format": "application/json",
+    "description": "numFound (total matches), docs array with title, author_name, first_publish_year, subject fields"
+  },
+  "invoke": {
+    "method": "GET",
+    "url": "https://openlibrary.org/search.json",
+    "params": {
+      "fields": "title,author_name,first_publish_year,subject",
+      "limit": 10
+    }
+  },
+  "tags": ["books", "library", "search", "reading", "literature", "author", "topic", "catalog"]
+}
