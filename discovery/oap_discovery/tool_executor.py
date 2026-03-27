@@ -272,7 +272,10 @@ async def execute_tool_call(
             )
         elif "json" in (manifest.get("input", {}) or {}).get("format", ""):
             # JSON input: pass arguments directly (merge any credential query params)
-            merged_params = {**arguments, **extra_query_params} if extra_query_params else arguments
+            # invoke_spec.params holds manifest defaults (e.g. engine=google_shopping)
+            # that must be included in every request — merge as base, LLM args override.
+            default_params = dict(invoke_spec.params) if invoke_spec.params else {}
+            merged_params = {**default_params, **arguments, **extra_query_params}
             result = await invoke_manifest(
                 invoke_spec,
                 params=merged_params,

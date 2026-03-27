@@ -18,6 +18,7 @@ class InvokeSpec(BaseModel):
     auth_in: str | None = Field(default=None, description="Where to send credentials: header or query")
     auth_name: str | None = Field(default=None, description="Header or query param name for the credential")
     headers: dict[str, str] | None = Field(default=None, description="Additional required headers as key-value pairs")
+    params: dict[str, Any] | None = Field(default=None, description="Fixed query/body params always sent with every request (e.g. engine=google_shopping)")
     streaming: bool | None = None
 
 
