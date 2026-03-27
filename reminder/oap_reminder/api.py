@@ -224,8 +224,9 @@ async def dispatch(body: dict):
             raise HTTPException(status_code=400, detail=str(exc))
         fields = {k: v for k, v in validated.model_dump(exclude_unset=True).items()
                   if k in _UPDATE_FIELDS}
-        # Remove lookup key — "title" was used to find the reminder, not rename it
-        fields.pop("title", None)
+        # Remove title only if it was used as the lookup key (id not provided)
+        if not body.get("id") and not body.get("reminder_id"):
+            fields.pop("title", None)
         if not fields:
             raise HTTPException(status_code=400, detail="No fields to update")
         reminder = _db.update(int(rid), **fields)
