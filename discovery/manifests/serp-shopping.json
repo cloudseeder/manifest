@@ -1,0 +1,29 @@
+{
+  "oap": "1.0",
+  "name": "serp-shopping",
+  "description": "Search Google Shopping for products with real prices, store availability, and ratings. Use for: 'where can I buy X', 'how much does X cost', 'find me a Y under $Z', 'compare prices on X', 'who has X in stock'. Returns product name, price, store, rating, shipping info, and direct purchase links.",
+  "input": {
+    "format": "application/json",
+    "description": "Search Google Shopping. Use q for the product query. Use location to bias results toward a specific area (e.g. 'Montgomery, TX'). Use num to control result count.",
+    "parameters": {
+      "q": {"type": "string", "description": "Product search query (e.g. '15 amp GFCI breaker Square D', 'cordless drill', 'lemon pudding mix')", "required": true},
+      "location": {"type": "string", "description": "Location to bias results for local store availability (e.g. 'Montgomery, TX', 'The Woodlands, TX')", "required": false},
+      "num": {"type": "integer", "description": "Number of results (default 10, max 20)", "required": false}
+    }
+  },
+  "output": {
+    "format": "application/json",
+    "description": "shopping_results array with title, price, source (store name), rating, reviews, link, and thumbnail per item"
+  },
+  "invoke": {
+    "method": "GET",
+    "url": "https://serpapi.com/search",
+    "params": {
+      "engine": "google_shopping",
+      "num": 10
+    },
+    "auth_in": "query",
+    "auth_name": "api_key"
+  },
+  "tags": ["shopping", "products", "price", "buy", "store", "ecommerce", "search", "google", "cost", "availability"]
+}
