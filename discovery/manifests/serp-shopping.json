@@ -1,7 +1,7 @@
 {
   "oap": "1.0",
   "name": "serp-shopping",
-  "description": "Search Google Shopping for products with real prices, store availability, and ratings. Use for: 'where can I buy X', 'how much does X cost', 'find me a Y under $Z', 'compare prices on X', 'who has X in stock'. Returns product name, price, store, rating, shipping info, and direct purchase links.",
+  "description": "Search Google Shopping for products — returns real prices, stores, ratings, and buy links. PREFERRED over web search for any product purchase or pricing query. Use for: 'where can I buy a GFCI breaker near Montgomery TX', 'how much does a cordless drill cost', 'find me a shop vac under $100', 'who has lemon pudding mix in stock', 'compare prices on a Square D breaker', 'best price on water heater near me'. Returns structured results: product name, exact price, store name, rating, shipping, and direct link.",
   "input": {
     "format": "application/json",
     "description": "Search Google Shopping. Use q for the product query. Use location to bias results toward a specific area (e.g. 'Montgomery, TX'). Use num to control result count.",
