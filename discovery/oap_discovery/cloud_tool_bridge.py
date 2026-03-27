@@ -115,6 +115,11 @@ async def execute_cloud_tool_loop(
             payload["system"] = system_prompt
         if claude_tools:
             payload["tools"] = claude_tools
+            # Force a tool call on round 1 — if the bridge was invoked, tools
+            # were discovered and action is required. Prevents Claude from
+            # responding conversationally and claiming success without acting.
+            if round_num == 0:
+                payload["tool_choice"] = {"type": "any"}
 
         try:
             started = time.monotonic()
