@@ -305,7 +305,11 @@ async def execute_tool_call(
                     body = await summarize_result(body, task, ollama, chunk_size, max_output)
             return body
         else:
-            return f"Error: {result.error or 'Unknown error'}"
+            # Include response body in error so the LLM (and logs) can see the API's message
+            detail = (result.response_body or "").strip()[:500]
+            err_msg = result.error or "Unknown error"
+            log.warning("Tool %s failed: %s — body: %s", tool_name, err_msg, detail)
+            return f"Error: {err_msg}" + (f"\n{detail}" if detail else "")
 
     except Exception as e:
         log.exception("Tool execution failed: %s", tool_name)

@@ -4,11 +4,13 @@
   "description": "Search Google Shopping for products — returns real prices, stores, ratings, and buy links. PREFERRED over web search for any product purchase or pricing query. Use for: 'where can I buy a GFCI breaker near Montgomery TX', 'how much does a cordless drill cost', 'find me a shop vac under $100', 'who has lemon pudding mix in stock', 'compare prices on a Square D breaker', 'best price on water heater near me'. Returns structured results: product name, exact price, store name, rating, shipping, and direct link.",
   "input": {
     "format": "application/json",
-    "description": "Search Google Shopping. Use q for the product query. Use location to bias results toward a specific area (e.g. 'Montgomery, TX'). Use num to control result count.",
+    "description": "Search Google Shopping. Use q for the product query. Use location to bias results toward a specific area (e.g. 'Montgomery, TX'). Optionally filter by min_price/max_price or sort_by (1=low-to-high, 2=high-to-low).",
     "parameters": {
       "q": {"type": "string", "description": "Product search query (e.g. '15 amp GFCI breaker Square D', 'cordless drill', 'lemon pudding mix')", "required": true},
       "location": {"type": "string", "description": "Location to bias results for local store availability (e.g. 'Montgomery, TX', 'The Woodlands, TX')", "required": false},
-      "num": {"type": "integer", "description": "Number of results (default 10, max 20)", "required": false}
+      "min_price": {"type": "number", "description": "Minimum price filter", "required": false},
+      "max_price": {"type": "number", "description": "Maximum price filter", "required": false},
+      "sort_by": {"type": "integer", "description": "Sort order: 1=price low-to-high, 2=price high-to-low", "required": false}
     }
   },
   "output": {
@@ -19,8 +21,7 @@
     "method": "GET",
     "url": "https://serpapi.com/search",
     "params": {
-      "engine": "google_shopping",
-      "num": 10
+      "engine": "google_shopping"
     },
     "auth": "api_key",
     "auth_in": "query",
