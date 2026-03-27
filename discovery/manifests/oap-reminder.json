@@ -8,7 +8,7 @@
     "parameters": {
       "action": {"type": "string", "description": "ask (questions about reminders), create (new reminder), complete (mark done), delete (remove), update (modify), cleanup (purge old completed)", "required": true},
       "question": {"type": "string", "description": "For ask action — your natural language question. All pending reminders are returned for Claude to answer.", "required": false},
-      "title": {"type": "string", "description": "Reminder title. Required for create. Also used by complete/delete/update to find a reminder by name.", "required": false},
+      "title": {"type": "string", "description": "Reminder title — must contain the full content. For shopping lists, include ALL items (e.g. 'Get milk, eggs, and bread'). Never use a generic label like 'Shopping List' or 'Store List'. Required for create.", "required": false},
       "notes": {"type": "string", "description": "Additional details or context", "required": false},
       "due_date": {"type": "string", "description": "Due date in YYYY-MM-DD format (or 'today', 'tomorrow')", "required": false},
       "due_time": {"type": "string", "description": "Due time in HH:MM or '5 PM' format", "required": false},
