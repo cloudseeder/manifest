@@ -22,6 +22,7 @@
       "engine": "google_shopping",
       "num": 10
     },
+    "auth": "api_key",
     "auth_in": "query",
     "auth_name": "api_key"
   },
