@@ -390,6 +390,64 @@ The small LLM (qwen3:8b) runs with `num_ctx: 4096` (~12-16K chars) due to the Ma
 - **Files >16K chars**: exceed the small LLM's context window. When `escalation.enabled: true`, these are automatically escalated to the big LLM (Claude, GPT-4 — 200K/128K context) which processes the raw output. When escalation is not configured, falls back to map-reduce summarization via `ollama.generate()`, which is lossy — especially on prose and markdown
 - **VRAM constraint**: 16GB shared between CPU and GPU on M4. Increasing `num_ctx` would push VRAM usage beyond what's available
 
+## Local-First with Cloud Delegation
+
+Manifest uses local models (Ollama) for everything by default. Cloud delegation (Claude, GPT-4, Gemini) is opt-in via `escalation` config and used selectively for cases where small local models fall short.
+
+**Why local-first?**
+- **Privacy** — email, reminders, conversations, and personal facts never leave the machine unless explicitly delegated
+- **Cost** — hundreds of tool calls/day on qwen3:8b costs nothing; the same on Claude adds up fast
+- **Latency** — no network round-trip for routine tasks
+- **Independence** — no API quota, no service outages, no vendor lock-in
+
+### Delegation paths
+
+All paths require `escalation.enabled: true` in `agent/config.yaml`. Each path is independent — you can have conversational routing go to Claude without enabling the cloud tool bridge, for example.
+
+| Path | Where | Trigger | What goes to cloud |
+|------|-------|---------|-------------------|
+| Conversational routing | `agent/api.py` | Intent classified as conversational | Full conversation history |
+| Intent classification | `agent/api.py` | Ambiguous message (regex doesn't match) | Message + memory facts for context |
+| Ollama contention bypass | `scheduler.py` + `executor.py` | User chats while background task runs on Ollama | Conversational messages only — task stays local |
+| Large output processing | `tool_executor.py` | Tool result > `summarize_threshold` (default 16K chars) | Raw tool result + task context |
+| Final reasoning escalation | `escalation.py` | Task fingerprint matches `escalate_prefixes` in config | Tool results + synthesis prompt |
+| Cloud tool bridge | `cloud_tool_bridge.py` | `tool_bridge.use_cloud_tools: true` | All tool calls (discovery still runs locally) |
+| Prompt refinement | `agent/api.py` | User clicks "Refine" when saving a task | Task prompt only (one-time, not per-run) |
+
+### What never goes to cloud
+
+- STT (faster-whisper, fully local)
+- TTS (Piper neural voices, fully local)
+- Embeddings (nomic-embed-text via local Ollama)
+- Experience cache lookup and storage
+- Tool execution (HTTP calls from discovery to manifests)
+- SQLite reads/writes (conversations, tasks, memory, notifications)
+
+### Configuration
+
+```yaml
+# agent/config.yaml
+escalation:
+  enabled: true
+  provider: anthropic    # or openai, googleai
+  model: claude-sonnet-4-6
+  timeout: 60
+  max_tokens: 4096
+  # api_key: optional — falls back to OAP_ESCALATION_API_KEY or OAP_ANTHROPIC_API_KEY
+```
+
+```yaml
+# discovery/config.yaml
+tool_bridge:
+  use_cloud_tools: false      # true = route ALL tool calling through Claude
+  escalate_prefixes: []       # task fingerprint prefixes to force cloud final reasoning
+  summarize_threshold: 16000  # chars; results above this go to cloud (or map-reduce fallback)
+```
+
+**`use_cloud_tools: true`** is the most aggressive delegation mode — every tool call goes through Claude instead of qwen3:8b. Discovery still finds manifests; Claude handles the tool_use/tool_result loop. Trades local privacy for more reliable tool use. The cloud tool bridge forces `tool_choice: any` on round 1 to prevent Claude from answering from training data instead of calling tools.
+
+**Map-reduce fallback:** When escalation is not configured but a tool result exceeds `summarize_threshold`, the result is summarized locally via `ollama.generate()` in chunks. More lossy than the cloud path, especially for prose and code — but keeps everything local.
+
 ## Security
 
 Manifest is designed for local use on the Mac Mini — no public exposure, no tunnel.
