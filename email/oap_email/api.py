@@ -352,6 +352,7 @@ async def dispatch(req: DispatchRequest):
         list_result = await list_messages(
             folder=None,
             since=since,
+            priority=req.priority,
             limit=50,
             _skip_default_since=True,
         )
