@@ -47,7 +47,7 @@ export default function ChatMessage({ message, ttsAvailable = false, ttsVoice }:
             <button
               onClick={handleSpeak}
               title={speaking ? 'Stop speaking' : 'Speak message'}
-              className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
+              className={`flex h-8 w-8 sm:h-6 sm:w-6 items-center justify-center rounded-lg sm:rounded-md transition-colors ${
                 speaking
                   ? 'bg-primary-50 text-primary'
                   : 'text-gray-300 hover:text-gray-500 hover:bg-gray-100'

@@ -6,7 +6,11 @@ import { useAnySpeaking } from '@/hooks/useTTS'
 import { useAvatarState } from '@/hooks/useAvatarState'
 import { useAgentEvents } from './AgentEventProvider'
 
-export default function AgentSidebar() {
+interface AgentSidebarProps {
+  onClose?: () => void
+}
+
+export default function AgentSidebar({ onClose }: AgentSidebarProps) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -28,6 +32,7 @@ export default function AgentSidebar() {
 
   async function handleNewChat() {
     navigate('/chat')
+    onClose?.()
   }
 
   const handleDelete = useCallback(async (convId: string) => {
@@ -48,7 +53,7 @@ export default function AgentSidebar() {
   return (
     <aside className="flex h-full w-64 flex-col bg-gray-900 text-white">
       <div className="flex h-16 items-center px-4 border-b border-gray-700">
-        <Link to="/" className="text-lg font-bold text-white">
+        <Link to="/" className="text-lg font-bold text-white" onClick={onClose}>
           Manifest
         </Link>
       </div>
@@ -79,6 +84,7 @@ export default function AgentSidebar() {
             <div key={conv.id} className="group relative flex items-center">
               <Link
                 to={`/chat/${conv.id}`}
+                onClick={onClose}
                 className={`block flex-1 truncate rounded-md px-2 py-1.5 pr-7 text-sm transition-colors ${
                   isActive
                     ? 'bg-primary text-white'
@@ -135,6 +141,7 @@ export default function AgentSidebar() {
       <div className="border-t border-gray-700 p-2">
         <Link
           to="/tasks"
+          onClick={onClose}
           className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors ${
             pathname.startsWith('/tasks')
               ? 'bg-primary text-white'
@@ -148,6 +155,7 @@ export default function AgentSidebar() {
         </Link>
         <Link
           to="/settings"
+          onClick={onClose}
           className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors ${
             pathname === '/settings'
               ? 'bg-primary text-white'

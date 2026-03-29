@@ -16,6 +16,8 @@ function AgentLayoutInner() {
   const stateRef = useRef(avatarState)
   stateRef.current = avatarState
 
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
   const update = useCallback((patch: Partial<AvatarState>) => {
     setAvatarState((prev) => ({ ...prev, ...patch }))
   }, [])
@@ -24,9 +26,6 @@ function AgentLayoutInner() {
   const notifRef = useRef(notificationCount)
   notifRef.current = notificationCount
 
-  // Broadcast avatar state to external display windows via BroadcastChannel.
-  // Uses a raw TTS subscription instead of useAnySpeaking() so that speaking
-  // changes never trigger React re-renders in this component or its children.
   const speakingRef = useRef(false)
   const channelRef = useRef<BroadcastChannel | null>(null)
 
@@ -50,7 +49,6 @@ function AgentLayoutInner() {
     return () => { unsub(); channelRef.current?.close(); channelRef.current = null }
   }, [broadcast])
 
-  // Re-broadcast when avatar state or notification count changes
   useEffect(() => {
     broadcast()
   }, [avatarState.recording, avatarState.streaming, avatarState.persona, notificationCount, broadcast])
@@ -58,8 +56,39 @@ function AgentLayoutInner() {
   return (
     <AvatarStateContext.Provider value={{ state: avatarState, update }}>
       <div className="flex h-screen overflow-hidden bg-white">
-        <AgentSidebar />
-        <main className="flex flex-1 flex-col overflow-hidden">
+
+        {/* Mobile backdrop */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/50 sm:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        {/* Sidebar — always visible on sm+, drawer on mobile */}
+        <div className={`
+          fixed inset-y-0 left-0 z-40 transition-transform duration-300 ease-in-out
+          sm:relative sm:z-auto sm:translate-x-0
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}>
+          <AgentSidebar onClose={() => setSidebarOpen(false)} />
+        </div>
+
+        <main className="flex flex-1 flex-col overflow-hidden min-w-0">
+          {/* Mobile header bar */}
+          <header className="flex h-12 shrink-0 items-center gap-3 border-b border-gray-200 px-3 sm:hidden">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
+              aria-label="Open menu"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <span className="font-semibold text-gray-800">Manifest</span>
+          </header>
+
           <Outlet />
         </main>
       </div>

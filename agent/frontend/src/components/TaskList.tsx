@@ -118,12 +118,12 @@ export default function TaskList() {
             </button>
           </div>
         ) : (
-          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+          <div className="rounded-xl border border-gray-200 bg-white overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Name</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Schedule</th>
+                  <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Schedule</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Last Run</th>
                   <th className="px-4 py-3 text-center font-medium text-gray-600">Enabled</th>
                 </tr>
@@ -138,7 +138,7 @@ export default function TaskList() {
                     }`}
                   >
                     <td className="px-4 py-3 font-medium text-gray-900">{task.name}</td>
-                    <td className="px-4 py-3 font-mono text-sm text-gray-500">
+                    <td className="hidden sm:table-cell px-4 py-3 font-mono text-sm text-gray-500">
                       {task.schedule || <span className="text-gray-300">&mdash;</span>}
                     </td>
                     <td className="px-4 py-3">

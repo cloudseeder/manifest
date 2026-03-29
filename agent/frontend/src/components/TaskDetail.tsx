@@ -148,7 +148,7 @@ export default function TaskDetail() {
     <div className="overflow-y-auto p-6">
       <div className="mx-auto max-w-2xl space-y-6">
         {/* Header */}
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <button
               onClick={() => navigate('/tasks')}
@@ -158,7 +158,7 @@ export default function TaskDetail() {
             </button>
             <h1 className="text-xl font-semibold text-gray-900">{task.name}</h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handleRunNow}
               disabled={running}
