@@ -243,10 +243,11 @@ async def auth_middleware(request: Request, call_next):
         # Valid ?token= on a non-API path → set cookie and redirect to clean URL
         if not is_api and request.query_params.get("token"):
             resp = RedirectResponse(url=path or "/", status_code=302)
+            is_https = request.url.scheme == "https" or request.headers.get("X-Forwarded-Proto") == "https"
             resp.set_cookie(
                 "oap_token", _agent_secret,
                 httponly=True, samesite="lax",
-                max_age=365 * 24 * 3600, secure=True,
+                max_age=365 * 24 * 3600, secure=is_https,
             )
             return resp
         return await call_next(request)
