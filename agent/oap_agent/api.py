@@ -221,8 +221,8 @@ async def auth_middleware(request: Request, call_next):
 
     path = request.url.path
 
-    # Health check is always public
-    if path == "/v1/agent/health":
+    # Always public — health check and service worker (SW can't send credentials)
+    if path in ("/v1/agent/health", "/sw.js"):
         return await call_next(request)
 
     is_api = path.startswith("/v1/")
