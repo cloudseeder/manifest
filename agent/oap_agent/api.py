@@ -1802,7 +1802,11 @@ if _static_dir.is_dir():
         return FileResponse(
             _static_dir / "sw.js",
             media_type="application/javascript",
-            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate",
+                "CDN-Cache-Control": "no-store",
+                "Surrogate-Control": "no-store",
+            },
         )
 
     @app.get("/{full_path:path}")
