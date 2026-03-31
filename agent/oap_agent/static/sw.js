@@ -1,4 +1,4 @@
-const CACHE = 'manifest-1774966775130';
+const CACHE = 'manifest-1774973273734';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(self.skipWaiting());

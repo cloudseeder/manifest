@@ -57,7 +57,7 @@ function AgentLayoutInner() {
 
   return (
     <AvatarStateContext.Provider value={{ state: avatarState, update }}>
-      <div className="flex h-screen overflow-hidden bg-white">
+      <div className="flex h-dvh overflow-hidden bg-white">
 
         {/* Mobile backdrop */}
         {sidebarOpen && (
