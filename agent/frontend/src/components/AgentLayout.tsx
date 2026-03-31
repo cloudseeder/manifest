@@ -3,7 +3,8 @@ import { Outlet } from 'react-router'
 import AgentSidebar from './AgentSidebar'
 import AgentEventProvider, { useAgentEvents } from './AgentEventProvider'
 import { AvatarStateContext, type AvatarState } from '@/hooks/useAvatarState'
-import { subscribeSpeaking } from '@/hooks/useTTS'
+import { subscribeSpeaking, useAnySpeaking } from '@/hooks/useTTS'
+import PersonaAvatar from './PersonaAvatar'
 
 /** Inner component that can access AgentEventProvider context for broadcasting. */
 function AgentLayoutInner() {
@@ -17,6 +18,7 @@ function AgentLayoutInner() {
   stateRef.current = avatarState
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const anySpeaking = useAnySpeaking()
 
   const update = useCallback((patch: Partial<AvatarState>) => {
     setAvatarState((prev) => ({ ...prev, ...patch }))
@@ -76,7 +78,7 @@ function AgentLayoutInner() {
 
         <main className="flex flex-1 flex-col overflow-hidden min-w-0">
           {/* Mobile header bar */}
-          <header className="flex h-12 shrink-0 items-center gap-3 border-b border-gray-200 px-3 sm:hidden">
+          <header className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 px-3 sm:hidden">
             <button
               onClick={() => setSidebarOpen(true)}
               className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
@@ -86,7 +88,24 @@ function AgentLayoutInner() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <span className="font-semibold text-gray-800">Manifest</span>
+            <div className="relative">
+              <PersonaAvatar
+                persona={avatarState.persona}
+                speaking={anySpeaking}
+                recording={avatarState.recording}
+                streaming={avatarState.streaming}
+                attentive={avatarState.attentive}
+                hasNotifications={notificationCount > 0}
+                size={44}
+                audioLevelRef={avatarState.audioLevelRef}
+              />
+              {notificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-0.5 text-[10px] font-bold text-white shadow">
+                  {notificationCount > 99 ? '99+' : notificationCount}
+                </span>
+              )}
+            </div>
+            <div className="w-10" />{/* spacer to center avatar */}
           </header>
 
           <Outlet />
