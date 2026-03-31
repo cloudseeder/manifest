@@ -1,4 +1,4 @@
-const CACHE = 'manifest-v2';
+const CACHE = '__SW_CACHE_VERSION__';
 const SHELL = ['/', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
