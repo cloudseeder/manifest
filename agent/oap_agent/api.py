@@ -1796,6 +1796,15 @@ from fastapi.responses import FileResponse
 _static_dir = Path(__file__).parent / "static"
 
 if _static_dir.is_dir():
+    @app.get("/sw.js")
+    async def serve_sw():
+        """Service worker — must never be cached so browsers always get the latest version."""
+        return FileResponse(
+            _static_dir / "sw.js",
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
+
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         """Serve static files or fall back to index.html for SPA routes."""
