@@ -15,7 +15,7 @@ import httpx
 import uvicorn
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import load_config
@@ -172,21 +172,88 @@ app = FastAPI(
 _agent_secret: str = ""  # Set in lifespan from config
 
 
+_LOGIN_HTML = """<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Manifest</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
+.card{background:#1e293b;border-radius:16px;padding:2rem;width:100%;max-width:340px;box-shadow:0 25px 50px rgba(0,0,0,.5)}
+h1{color:#f1f5f9;font-size:1.5rem;font-weight:600;margin-bottom:.25rem}
+p{color:#94a3b8;font-size:.875rem;margin-bottom:1.5rem}
+input{width:100%;padding:.75rem 1rem;border:1px solid #334155;border-radius:10px;background:#0f172a;color:#f1f5f9;font-size:1rem;outline:none;transition:border-color .2s}
+input:focus{border-color:#3b82f6}
+button{margin-top:.75rem;width:100%;padding:.75rem;border:none;border-radius:10px;background:#3b82f6;color:#fff;font-size:1rem;font-weight:500;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>Manifest</h1>
+<p>Enter your access token to continue.</p>
+<input type="password" id="t" placeholder="Access token" autofocus>
+<button onclick="go()">Sign in</button>
+</div>
+<script>
+document.getElementById('t').addEventListener('keydown',function(e){if(e.key==='Enter')go()})
+function go(){
+  var t=document.getElementById('t').value.trim()
+  if(!t)return
+  localStorage.setItem('oap_agent_token',t)
+  window.location.href='/?token='+encodeURIComponent(t)
+}
+</script>
+</body>
+</html>"""
+
+
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    """Bearer token auth for /v1/agent/* routes. Skipped when no secret is configured."""
-    if _agent_secret and request.url.path.startswith("/v1/agent/") and request.url.path != "/v1/agent/health":
-        token = None
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-        if not token:
-            token = request.headers.get("X-Backend-Token", "")
-        if not token:
-            token = request.query_params.get("token", "")
-        if token != _agent_secret:
-            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
-    return await call_next(request)
+    """Auth for all routes when secret is configured.
+    API paths (/v1/): Bearer token or X-Backend-Token header or ?token= query param.
+    Static/SPA paths: cookie (set on first sign-in) or ?token= query param → sets cookie + redirects.
+    Unauthenticated browser requests get an inline login page.
+    """
+    if not _agent_secret:
+        return await call_next(request)
+
+    path = request.url.path
+
+    # Health check is always public
+    if path == "/v1/agent/health":
+        return await call_next(request)
+
+    is_api = path.startswith("/v1/")
+
+    # Resolve token
+    token = ""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+    if not token:
+        token = request.headers.get("X-Backend-Token", "")
+    if not token:
+        token = request.query_params.get("token", "")
+    if not token and not is_api:
+        token = request.cookies.get("oap_token", "")
+
+    if token == _agent_secret:
+        # Valid ?token= on a non-API path → set cookie and redirect to clean URL
+        if not is_api and request.query_params.get("token"):
+            resp = RedirectResponse(url=path or "/", status_code=302)
+            resp.set_cookie(
+                "oap_token", _agent_secret,
+                httponly=True, samesite="lax",
+                max_age=365 * 24 * 3600, secure=True,
+            )
+            return resp
+        return await call_next(request)
+
+    if is_api:
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    return HTMLResponse(content=_LOGIN_HTML, status_code=401)
 
 
 # ---------------------------------------------------------------------------
