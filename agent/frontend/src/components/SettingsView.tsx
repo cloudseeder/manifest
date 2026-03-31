@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import type { AgentSettings, LLMUsageSummary, UserFact, Episode } from '@/lib/types'
+import { getToken, setToken } from '@/lib/token'
 import { useVoices, useTTS } from '@/hooks/useTTS'
 import PersonaAvatar from './PersonaAvatar'
 
@@ -841,7 +842,65 @@ export default function SettingsView() {
             </div>
           )}
         </div>
+
+        {/* Remote Access section */}
+        <RemoteAccessSection />
       </div>
+    </div>
+  )
+}
+
+function RemoteAccessSection() {
+  const [token, setTokenState] = useState(() => getToken())
+  const [input, setInput] = useState(() => getToken())
+  const [saved, setSaved] = useState(false)
+
+  function handleSave() {
+    setToken(input.trim())
+    setTokenState(input.trim())
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  function handleClear() {
+    setToken('')
+    setTokenState('')
+    setInput('')
+  }
+
+  return (
+    <div className="mb-8 rounded-xl border border-gray-200 bg-white p-6">
+      <h2 className="mb-1 text-lg font-medium text-gray-900">Remote Access</h2>
+      <p className="mb-4 text-sm text-gray-500">
+        Bearer token for accessing Manifest over Cloudflare Tunnel. Set <code className="rounded bg-gray-100 px-1 text-xs">api.secret</code> in <code className="rounded bg-gray-100 px-1 text-xs">agent/config.yaml</code> on the server, then enter the same value here.
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="password"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+          placeholder="Enter token..."
+          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+        <button
+          onClick={handleSave}
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-600"
+        >
+          {saved ? 'Saved ✓' : 'Save'}
+        </button>
+        {token && (
+          <button
+            onClick={handleClear}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      {token && (
+        <p className="mt-2 text-xs text-green-600">Token set — sent as Bearer auth on all API calls.</p>
+      )}
     </div>
   )
 }

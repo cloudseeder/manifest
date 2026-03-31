@@ -14,8 +14,8 @@ from typing import Any
 import httpx
 import uvicorn
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import load_config
@@ -77,9 +77,16 @@ def _validate_cron(schedule: str) -> None:
 async def lifespan(app: FastAPI):
     global _db, _event_bus, _scheduler, _discovery_url, _discovery_model, _discovery_timeout
     global _debug_mode, _max_tasks, _max_facts, _voice_cfg, _escalation_cfg, _tts_enabled
+    global _agent_secret
 
     config_path = getattr(app, "_config_path", "config.yaml")
     cfg = load_config(config_path)
+
+    _agent_secret = cfg.api.secret
+    if _agent_secret:
+        log.info("Agent auth enabled — bearer token required for /v1/agent/* routes")
+    else:
+        log.info("Agent auth disabled — no secret configured (local mode)")
 
     _db = AgentDB(cfg.database.path)
     _event_bus = EventBus()
@@ -161,6 +168,25 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+_agent_secret: str = ""  # Set in lifespan from config
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Bearer token auth for /v1/agent/* routes. Skipped when no secret is configured."""
+    if _agent_secret and request.url.path.startswith("/v1/agent/") and request.url.path != "/v1/agent/health":
+        token = None
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+        if not token:
+            token = request.headers.get("X-Backend-Token", "")
+        if not token:
+            token = request.query_params.get("token", "")
+        if token != _agent_secret:
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    return await call_next(request)
 
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@ import yaml
 class ApiConfig:
     host: str = "127.0.0.1"
     port: int = 8303
+    secret: str = ""  # Bearer token for remote access. Empty = no auth (local mode).
 
 
 @dataclass
@@ -88,6 +89,11 @@ def load_config(config_path: str = "config.yaml") -> AgentConfig:
         api = raw["api"]
         cfg.api.host = api.get("host", cfg.api.host)
         cfg.api.port = api.get("port", cfg.api.port)
+        cfg.api.secret = api.get("secret", cfg.api.secret)
+
+    import os
+    if os.environ.get("OAP_AGENT_SECRET"):
+        cfg.api.secret = os.environ["OAP_AGENT_SECRET"]
 
     if "database" in raw:
         db = raw["database"]
@@ -127,7 +133,6 @@ def load_config(config_path: str = "config.yaml") -> AgentConfig:
         cfg.escalation.max_tokens = esc.get("max_tokens", cfg.escalation.max_tokens)
 
     # Env var overrides for escalation
-    import os
     if os.environ.get("OAP_ESCALATION_ENABLED", "").lower() in ("true", "1"):
         cfg.escalation.enabled = True
     if os.environ.get("OAP_ESCALATION_PROVIDER"):

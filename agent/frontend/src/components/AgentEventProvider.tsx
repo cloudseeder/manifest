@@ -51,7 +51,10 @@ export default function AgentEventProvider({ children }: { children: React.React
       if (esRef.current) {
         esRef.current.close()
       }
-      const es = new EventSource('/v1/agent/events')
+      const esUrl = (() => {
+        try { const t = localStorage.getItem('oap_agent_token'); return t ? `/v1/agent/events?token=${encodeURIComponent(t)}` : '/v1/agent/events' } catch { return '/v1/agent/events' }
+      })()
+      const es = new EventSource(esUrl)
       esRef.current = es
 
       es.addEventListener('task_run_finished', (e) => {
