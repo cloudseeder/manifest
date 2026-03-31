@@ -78,7 +78,7 @@ function AgentLayoutInner() {
 
         <main className="flex flex-1 flex-col overflow-hidden min-w-0">
           {/* Mobile header bar */}
-          <header className="flex h-24 shrink-0 items-center justify-between border-b border-gray-200 px-3 sm:hidden">
+          <header className="flex h-48 shrink-0 items-center justify-between border-b border-gray-200 px-3 sm:hidden">
             <button
               onClick={() => setSidebarOpen(true)}
               className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
@@ -96,7 +96,7 @@ function AgentLayoutInner() {
                 streaming={avatarState.streaming}
                 attentive={avatarState.attentive}
                 hasNotifications={notificationCount > 0}
-                size={88}
+                size={176}
                 audioLevelRef={avatarState.audioLevelRef}
               />
               {notificationCount > 0 && (
