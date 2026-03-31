@@ -1,10 +1,7 @@
-const CACHE = 'manifest-1774965841271';
-const SHELL = ['/', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
+const CACHE = 'manifest-1774966038275';
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())
-  );
+  e.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', (e) => {
@@ -19,23 +16,21 @@ self.addEventListener('fetch', (e) => {
   const { request } = e;
   const url = new URL(request.url);
 
-  // Never intercept API calls — always go to network
+  // Never intercept API calls or auth redirects — always go to network
   if (url.pathname.startsWith('/v1/')) return;
 
-  // Navigation requests: serve cached shell (SPA catch-all)
-  if (request.mode === 'navigate') {
-    e.respondWith(
-      caches.match('/').then((cached) => cached || fetch(request))
-    );
-    return;
-  }
+  // Navigation (HTML): always network so index.html is always fresh
+  // and auth redirects (?token=) always reach the server
+  if (request.mode === 'navigate') return;
 
-  // Assets: cache-first, lazily populate
+  // Static assets only: cache-first, lazily populate
+  if (!url.pathname.startsWith('/assets/') && !url.pathname.startsWith('/icons/')) return;
+
   e.respondWith(
     caches.match(request).then((cached) => {
       if (cached) return cached;
       return fetch(request).then((response) => {
-        if (response.ok && (url.pathname.startsWith('/assets/') || SHELL.includes(url.pathname))) {
+        if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE).then((c) => c.put(request, clone));
         }
