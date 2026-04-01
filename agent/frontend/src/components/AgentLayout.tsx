@@ -78,7 +78,10 @@ function AgentLayoutInner() {
 
         <main className="flex flex-1 flex-col overflow-hidden min-w-0">
           {/* Mobile header bar */}
-          <header className="flex shrink-0 items-center justify-between border-b border-gray-200 px-3 py-4 sm:hidden">
+          <header
+            className="flex shrink-0 items-center justify-between border-b border-gray-200 px-3 py-4 sm:hidden"
+            style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}
+          >
             <button
               onClick={() => setSidebarOpen(true)}
               className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
