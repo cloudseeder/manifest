@@ -166,6 +166,9 @@ export default function ChatView() {
     }
   }, [searchParams, initialConvId, defaultModel])
 
+  const streamingRef = useRef(streaming)
+  streamingRef.current = streaming
+
   async function fetchConversation(id: string) {
     setLoading(true)
     setError(null)
@@ -176,7 +179,11 @@ export default function ChatView() {
         return
       }
       const data = await res.json()
-      setMessages(data.messages || [])
+      // Don't overwrite state while handleSend is managing it — the stream
+      // may have already added the assistant message by the time this resolves.
+      if (!streamingRef.current) {
+        setMessages(data.messages || [])
+      }
     } catch {
       setError('Failed to load conversation')
     } finally {
