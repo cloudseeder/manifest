@@ -108,7 +108,9 @@ function AgentLayoutInner() {
             <div className="w-10" />{/* spacer to center avatar */}
           </header>
 
-          <Outlet />
+          <div className="flex-1 overflow-hidden min-h-0">
+            <Outlet />
+          </div>
         </main>
       </div>
     </AvatarStateContext.Provider>
